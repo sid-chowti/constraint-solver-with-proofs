@@ -17,6 +17,16 @@ _OPERATORS = {
     ">=": op.ge,
 }
 
+# The mirror of each comparison, for saying a clue the other way round. Only
+# the ORDER of the two sides changes, so "<" becomes ">" and the rest follow.
+_REVERSED = {"==": "==", "!=": "!=", "<": ">", ">": "<", "<=": ">=", ">=": "<="}
+
+
+def _pair_words(category_value):
+    """A (category, value) pair as readable words, e.g. 'green (color)'."""
+    category, value = category_value
+    return f"{value} ({category})"
+
 
 def _validate_operator(operator):
     """Raise ValueError if `operator` isn't one of the supported comparisons."""
@@ -46,6 +56,22 @@ class Constraint(ABC):
         copying the grid. Only Or does; everything else reads straight off
         the grid. The solver runs the cheap clues first."""
         return False
+
+    @abstractmethod
+    def describe(self):
+        """This clue as one plain sentence, built ONLY from the clue's own
+        fields.
+
+        Deliberately never falls back to source_text. The confirmation screen
+        shows this next to the user's sentence so they can spot a misreading;
+        echoing their own words back would make it a mirror, not a check.
+        """
+
+    def also_means(self):
+        """The same clue said with the two sides swapped, or None when that
+        adds nothing. Only clues carrying a direction have a useful second
+        reading."""
+        return None
 
 
 @dataclass
@@ -93,6 +119,20 @@ class AbsolutePosition(Constraint):
 
         return changed
 
+    # One wording per comparison against a literal house number.
+    _WORDING = {
+        "==": "{who} is in house {n}",
+        "!=": "{who} is not in house {n}",
+        "<": "{who} is somewhere left of house {n}",
+        ">": "{who} is somewhere right of house {n}",
+        "<=": "{who} is in house {n} or somewhere left of it",
+        ">=": "{who} is in house {n} or somewhere right of it",
+    }
+
+    def describe(self):
+        return self._WORDING[self.operator].format(
+            who=_pair_words(self.category_value), n=self.position)
+
 
 @dataclass
 class RelativePosition(Constraint):
@@ -121,6 +161,50 @@ class RelativePosition(Constraint):
 
         compare = _OPERATORS[self.operator]
         return compare(position_a + self.offset, position_b)
+
+    def mirrored(self):
+        """The same clue with the two sides swapped: swap a and b, negate the
+        offset, reverse the operator.
+
+        This is how the second reading is produced — by mirroring the STRUCTURE
+        and describing that, never by rewriting the first sentence's words.
+        Swapping the words "left" and "right" in a string would eventually turn
+        "somewhere right of" into "immediately left of", which invents a
+        constraint the user never wrote.
+        """
+        return RelativePosition(self.b, self.a, _REVERSED[self.operator], -self.offset)
+
+    # Wording for the shapes real puzzles use, keyed by (operator, offset).
+    # The OFFSET is what carries the strength: "==" with offset +-1 means
+    # adjacent, while "<" or ">" with offset 0 means any distance. mirrored()
+    # preserves both numbers, so no mirror can cross between the two.
+    _WORDING = {
+        ("==", 0): "{a} and {b} are in the same house",
+        ("==", 1): "{a} is immediately left of {b}",
+        ("==", -1): "{a} is immediately right of {b}",
+        ("<", 0): "{a} is somewhere left of {b}",
+        (">", 0): "{a} is somewhere right of {b}",
+    }
+
+    def describe(self):
+        wording = self._WORDING.get((self.operator, self.offset))
+        if wording is not None:
+            return wording.format(a=_pair_words(self.a), b=_pair_words(self.b))
+
+        # A shape nothing planned for. Say it literally rather than reach for
+        # friendly words: clunky and true beats readable and wrong.
+        return (f"the house of {_pair_words(self.a)} plus {self.offset} "
+                f"is {self.operator} the house of {_pair_words(self.b)}")
+
+    def also_means(self):
+        """Say direction clues both ways round, so the reader never has to flip
+        "a is left of b" into "b is right of a" in their head. That flip is the
+        exact mistake this screen exists to catch, so the screen must not ask
+        the reader to perform it."""
+        # Symmetric shapes: naming the other side first says nothing new.
+        if self.offset == 0 and self.operator in ("==", "!="):
+            return None
+        return self.mirrored().describe()
 
     def propagate(self, possibilities):
         """Arc consistency, both directions: a position survives only if the
@@ -194,6 +278,9 @@ class And(Constraint):
         """An And is only as cheap as its most expensive child."""
         return any(child.is_speculative() for child in self.constraints)
 
+    def describe(self):
+        return ", and ".join(child.describe() for child in self.constraints)
+
 
 def _settle_branch(possibilities, constraint):
     """Push one branch as far as it goes on its own throwaway grid: the
@@ -255,6 +342,33 @@ class Or(Constraint):
     def is_speculative(self):
         """Or is the one clue that has to guess and copy the grid."""
         return True
+
+    def _neighbour_gap(self):
+        """If this Or is the "N houses apart" shape - the same two things
+        compared at +N and -N - return N. Otherwise None.
+
+        Worth spotting because "next to" is how a puzzle says it in English,
+        and every "next to" clue arrives as exactly this two-branch Or.
+        """
+        if len(self.constraints) != 2:
+            return None
+        left, right = self.constraints
+        if not isinstance(left, RelativePosition) or not isinstance(right, RelativePosition):
+            return None
+        if (left.a, left.b) != (right.a, right.b):
+            return None
+        if left.operator != "==" or right.operator != "==":
+            return None
+        if left.offset != -right.offset or left.offset == 0:
+            return None
+        return abs(left.offset)
+
+    def describe(self):
+        gap = self._neighbour_gap()
+        if gap is not None:
+            a, b = _pair_words(self.constraints[0].a), _pair_words(self.constraints[0].b)
+            return f"{a} is next to {b}" if gap == 1 else f"{a} is {gap} houses away from {b}"
+        return "either " + ", or ".join(child.describe() for child in self.constraints)
 
     def _keep_union(self, possibilities, survivors, refutations):
         """Cross off values that NO surviving branch still allows. A value even

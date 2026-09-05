@@ -506,3 +506,111 @@ def test_a_bad_position_inside_a_group_is_found():
         validate_constraints(puzzle, [clue])
 
     assert any(p.kind == "position" for p in raised.value.problems)
+
+
+# ---------------------------------------------------------------------------
+# describe(): what the confirmation screen shows the user
+# ---------------------------------------------------------------------------
+
+GREEN = ("color", "green")
+IVORY = ("color", "ivory")
+DOG = ("pet", "dog")
+
+
+def test_mirrored_agrees_with_allows_on_every_shape():
+    """The mirror rule, checked against the propagation code that already
+    works: for every operator and offset, mirrored().allows(q, p) must agree
+    with allows(p, q) on every pair of positions. This is what lets describe()
+    build the second reading from the structure instead of from the words."""
+    for operator in ("==", "!=", "<", ">", "<=", ">="):
+        for offset in range(-3, 4):
+            clue = RelativePosition(GREEN, IVORY, operator, offset)
+            mirror = clue.mirrored()
+            for a in range(1, 8):
+                for b in range(1, 8):
+                    assert clue.allows(a, b) == mirror.allows(b, a), (operator, offset, a, b)
+
+
+def test_somewhere_never_becomes_immediately():
+    """The bug this whole design guards against: "somewhere right of" and
+    "immediately right of" are different clues, and mirroring must not turn one
+    into the other. Concretely, green in house 1 with ivory in house 4
+    satisfies the loose clue but not the adjacent one."""
+    somewhere = RelativePosition(IVORY, GREEN, ">", 0)   # ivory anywhere right of green
+    adjacent = RelativePosition(IVORY, GREEN, "==", 1)   # ivory exactly one left of green
+
+    assert somewhere.allows(4, 1) is True
+    assert adjacent.allows(4, 1) is False
+
+    # The wording keeps them apart, in both readings.
+    for text in (somewhere.describe(), somewhere.also_means()):
+        assert "somewhere" in text
+        assert "immediately" not in text
+    for text in (adjacent.describe(), adjacent.also_means()):
+        assert "immediately" in text
+        assert "somewhere" not in text
+
+    # And the mirror keeps the offset that carries the strength.
+    assert somewhere.mirrored().offset == 0
+    assert adjacent.mirrored().offset == -1
+
+
+def test_direction_clues_are_said_both_ways():
+    """The reader must never have to flip a direction in their head."""
+    clue = RelativePosition(IVORY, GREEN, "==", 1)
+    assert clue.describe() == "ivory (color) is immediately left of green (color)"
+    assert clue.also_means() == "green (color) is immediately right of ivory (color)"
+
+
+def test_symmetric_clues_have_no_second_reading():
+    """"A and B share a house" says the same thing whichever side leads, so a
+    second sentence would be noise."""
+    assert RelativePosition(GREEN, DOG, "==", 0).also_means() is None
+    assert RelativePosition(GREEN, DOG, "!=", 0).also_means() is None
+    assert AbsolutePosition(GREEN, "==", 1).also_means() is None
+
+
+def test_describe_never_echoes_source_text():
+    """describe() must read the fields, not the sentence. If it ever fell back
+    to source_text the screen would show the user their own words and confirm
+    nothing at all."""
+    lie = RelativePosition(IVORY, GREEN, "==", 1,
+                           source_text="The green house is left of the ivory house.")
+    assert "The green house is left" not in lie.describe()
+    assert lie.describe() == "ivory (color) is immediately left of green (color)"
+
+
+def test_next_to_is_recognised():
+    """Every "next to" clue arrives as a two-branch Or; say it the way the
+    puzzle said it."""
+    next_to = Or([RelativePosition(GREEN, DOG, "==", 1),
+                  RelativePosition(GREEN, DOG, "==", -1)])
+    assert next_to.describe() == "green (color) is next to dog (pet)"
+
+    two_apart = Or([RelativePosition(GREEN, DOG, "==", 2),
+                    RelativePosition(GREEN, DOG, "==", -2)])
+    assert two_apart.describe() == "green (color) is 2 houses away from dog (pet)"
+
+
+def test_an_unrelated_or_is_spelled_out():
+    """Anything that isn't the neighbour shape gets listed branch by branch."""
+    either = Or([AbsolutePosition(GREEN, "==", 1), AbsolutePosition(GREEN, "==", 5)])
+    assert either.describe() == "either green (color) is in house 1, or green (color) is in house 5"
+
+
+def test_unplanned_shape_falls_back_to_literal_wording():
+    """No friendly guess for a combination nobody planned for - clunky and
+    true beats readable and wrong."""
+    odd = RelativePosition(GREEN, IVORY, ">", 2)
+    assert odd.describe() == "the house of green (color) plus 2 is > the house of ivory (color)"
+
+
+def test_absolute_wording_covers_every_operator():
+    for operator in ("==", "!=", "<", ">", "<=", ">="):
+        text = AbsolutePosition(GREEN, operator, 3).describe()
+        assert "green (color)" in text and "house 3" in text
+
+
+def test_and_joins_its_children():
+    both = And([AbsolutePosition(GREEN, "==", 1), AbsolutePosition(DOG, "==", 2)])
+    assert both.describe() == "green (color) is in house 1, and dog (pet) is in house 2"
