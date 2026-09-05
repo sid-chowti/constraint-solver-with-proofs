@@ -50,6 +50,20 @@
   details.byo { margin-top: 18px; }
   details.byo > summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 15px; }
 
+  /* The confirmation screen: your sentence, and what the solver made of it. */
+  .cats { margin: 8px 0 0; padding-left: 20px; font-size: 14.5px; }
+  .cats li { margin: 2px 0; color: var(--soft); }
+  .cats strong { color: var(--ink); }
+  .clue-check { display: flex; gap: 12px; align-items: flex-start;
+                padding: 12px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .clue-check:last-child { border-bottom: none; }
+  /* Overrides the full-width rule that inputs share. */
+  .clue-check input { width: auto; flex: none; margin: 5px 0 0; }
+  .clue-check.off { opacity: 0.4; }
+  .orig { margin: 0; font-size: 15px; }
+  .said { margin: 2px 0 0; font-size: 14px; color: var(--soft); }
+  .said.mirror { color: var(--accent); }
+
   .scroll { overflow-x: auto; }
   table { border-collapse: collapse; width: 100%; font-size: 15px; }
   th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
@@ -106,10 +120,30 @@
         costs a few cents, billed to you. The solving and the explanation are free.
       </p>
       <div class="row" style="margin-top:12px">
-        <button id="run-mine" class="ghost">Translate and solve</button>
+        <button id="run-mine" class="ghost">Translate it</button>
       </div>
     </details>
   </div>
+
+  <!-- Shown between translating and solving. Nothing has been solved yet at
+       this point, on purpose: there is no answer here to anchor on. -->
+  <section id="confirm" class="hidden">
+    <h2>Check what it understood</h2>
+    <div class="panel">
+      <p class="note" style="margin-top:0">
+        The solver is guaranteed correct &mdash; but only you can tell whether it was handed
+        the <em>right puzzle</em>. Compare each line below with your own sentence. Switch off
+        anything it read wrong, or go back and reword it.
+      </p>
+      <div id="confirm-shape"></div>
+      <div id="confirm-clues"></div>
+    </div>
+    <div class="row" style="margin-top:16px">
+      <button id="run-confirmed">That&rsquo;s right &mdash; solve it</button>
+      <button id="back-to-text" class="ghost">Back to my text</button>
+      <span id="confirm-count" class="note" style="margin:0"></span>
+    </div>
+  </section>
 
   <p id="msg" class="note hidden"></p>
   <div id="out" class="hidden"></div>
@@ -171,11 +205,73 @@ function renderGroup(g) {
   return html + '</div>';
 }
 
-function render(data) {
+/* What the last translation handed down. The server keeps nothing between
+   requests, so this is the only copy — the page carries the puzzle from the
+   translate call to the solve call. */
+let translated = null;
+let heading = null;
+
+/* --- the confirmation screen ------------------------------------------- */
+
+/* The categories and house count the AI decided on. Worth showing: the AI
+   invents this half too, so a made-up category is a misreading like any other. */
+function renderShape(body) {
+  let html = `<p class="orig">It read <strong>${body.num_positions} houses</strong>`
+           + ' and these categories:</p><ul class="cats">';
+  for (const name of Object.keys(body.categories)) {
+    html += `<li><strong>${esc(name)}</strong>: ${body.categories[name].map(esc).join(', ')}</li>`;
+  }
+  return html + '</ul>';
+}
+
+/* One clue, your words above and the solver's reading below. The reading is
+   built from the clue's data, never from your sentence — otherwise this would
+   show you your own words back and confirm nothing. */
+function renderClueCheck(c) {
+  let html = '<label class="clue-check">'
+           + `<input type="checkbox" checked data-number="${c.number}">`
+           + '<span>';
+  if (c.source_text) html += `<p class="orig">&ldquo;${esc(c.source_text)}&rdquo;</p>`;
+  html += `<p class="said">&rarr; ${esc(c.says)}</p>`;
+  /* Direction clues are said both ways so you never have to flip one in your
+     head — that flip is the mistake this screen exists to catch. */
+  if (c.also_means) html += `<p class="said mirror">&rarr; so ${esc(c.also_means)}</p>`;
+  return html + '</span></label>';
+}
+
+function showConfirm(body) {
+  translated = body;
+  heading = body.info;
+  $('confirm-shape').innerHTML = renderShape(body);
+  $('confirm-clues').innerHTML = body.clues.map(renderClueCheck).join('');
+  $('confirm').classList.remove('hidden');
+  $('out').classList.add('hidden');
+  refreshCount();
+  $('confirm').scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+function checkboxes() {
+  return Array.from(document.querySelectorAll('#confirm-clues input'));
+}
+
+/* Dim the switched-off clues and keep the running count honest. */
+function refreshCount() {
+  const boxes = checkboxes();
+  const on = boxes.filter(b => b.checked).length;
+  boxes.forEach(b => b.closest('.clue-check').classList.toggle('off', !b.checked));
+  $('confirm-count').textContent = on === boxes.length
+    ? `all ${on} clues switched on`
+    : `${on} of ${boxes.length} clues switched on — fewer clues can only mean a less complete answer, never a wrong one`;
+}
+
+/* --- the answer ---------------------------------------------------------- */
+
+function render(data, info) {
   const out = $('out');
+  info = info || data.info || {name: 'Your puzzle'};
   let html = '';
 
-  html += `<h2>${esc(data.info.name)}</h2>`;
+  html += `<h2>${esc(info.name)}</h2>`;
   html += `<p><span class="status">${esc(data.status)}</span></p>`;
   if (data.reason) html += `<p class="note">${esc(data.reason)}</p>`;
 
@@ -192,9 +288,13 @@ function render(data) {
   }
 
   if (data.clues.length) {
-    html += '<h2>The clues it was given</h2><div class="panel"><ol class="clues">';
-    data.clues.forEach(c => html += `<li>${esc(c.text)}</li>`);
-    html += '</ol></div>';
+    html += '<h2>The clues it was given</h2><div class="panel">';
+    data.clues.forEach(c => {
+      html += '<div class="step">';
+      if (c.source_text) html += `<p class="orig">&ldquo;${esc(c.source_text)}&rdquo;</p>`;
+      html += `<p class="said">&rarr; ${esc(c.says)}</p></div>`;
+    });
+    html += '</div>';
   }
 
   html += `<h2>How it worked it out &mdash; ${data.trace.length} steps</h2>`;
@@ -204,7 +304,11 @@ function render(data) {
   out.classList.remove('hidden');
 }
 
-async function call(url, options, button, working) {
+/* --- talking to the server ----------------------------------------------- */
+
+/* `then` decides what to do with a good reply, so the same plumbing serves
+   both the translate step and the solve step. */
+async function call(url, options, button, working, then) {
   $('out').classList.add('hidden');
   button.disabled = true;
   say(working);
@@ -217,11 +321,12 @@ async function call(url, options, button, working) {
       if (d && d.attempts && d.attempts.length) {
         text += ' The checks said: ' + d.attempts[d.attempts.length - 1].join(' ');
       }
+      if (d && d.problems) text += ' ' + d.problems.join(' ');
       say(text, true);
       return;
     }
     say('');
-    render(body);
+    then(body);
   } catch (e) {
     say('Could not reach the server: ' + e.message, true);
   } finally {
@@ -229,15 +334,44 @@ async function call(url, options, button, working) {
   }
 }
 
-$('run-example').onclick = e =>
-  call('/api/example', {}, e.target, 'Solving…');
+function post(payload) {
+  return {method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)};
+}
 
+/* The bundled puzzle skips the confirmation screen: a person already checked
+   it, so there is no AI reading to second-guess. */
+$('run-example').onclick = e =>
+  call('/api/example', {}, e.target, 'Solving…', body => {
+    $('confirm').classList.add('hidden');
+    render(body);
+  });
+
+/* Your own puzzle stops at the confirmation screen — it does not solve. */
 $('run-mine').onclick = e =>
-  call('/api/solve', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({text: $('text').value, api_key: $('key').value}),
-  }, e.target, 'Reading your puzzle, then solving it…');
+  call('/api/translate', post({text: $('text').value, api_key: $('key').value}),
+       e.target, 'Reading your puzzle…', showConfirm);
+
+/* Send back only the clues still switched on. The whole puzzle travels up
+   again because the server remembered none of it. */
+$('run-confirmed').onclick = e => {
+  const on = new Set(checkboxes().filter(b => b.checked).map(b => Number(b.dataset.number)));
+  call('/api/solve', post({
+    num_positions: translated.num_positions,
+    categories: translated.categories,
+    clues: translated.clues.filter(c => on.has(c.number)).map(c => c.clue),
+  }), e.target, 'Solving…', body => render(body, heading));
+};
+
+$('back-to-text').onclick = () => {
+  $('confirm').classList.add('hidden');
+  $('out').classList.add('hidden');
+  say('');
+  $('text').focus();
+};
+
+/* One listener for every checkbox, now and after any re-render. */
+$('confirm-clues').onchange = refreshCount;
 </script>
 </body>
 </html>

@@ -45,17 +45,55 @@ def test_the_example_comes_with_its_explanation():
     assert [g["id"] for g in body["trace"]] == list(range(1, len(body["trace"]) + 1))
 
 
-# The clues are shown in the user's own words, not as internals.
-def test_the_clues_come_back_as_english():
+# Each clue comes back three ways: the user's sentence, what the solver
+# understood, and the data itself so the browser can hand it back.
+def test_the_clues_come_back_both_ways():
     clues = client.get("/api/example").json()["clues"]
 
     assert len(clues) == 14
-    assert clues[0]["text"] == "The Englishman lives in the red house."
+    assert clues[0]["source_text"] == "The Englishman lives in the red house."
+    assert clues[0]["says"] == "English (nation) and red (color) are in the same house"
+    assert clues[0]["also_means"] is None  # symmetric, so no second reading
+
+    # The one direction-bearing clue in the whole puzzle is said both ways, so
+    # the reader never has to flip it in their head.
+    green = next(c for c in clues if "immediately" in c["says"])
+    assert green["says"] == "ivory (color) is immediately left of green (color)"
+    assert green["also_means"] == "green (color) is immediately right of ivory (color)"
+
+
+# ---------------------------------------------------------------------------
+# /api/translate - reads the puzzle, and deliberately stops there
+# ---------------------------------------------------------------------------
+
+
+def _fake_translation(monkeypatch):
+    """Wire /api/translate to the bundled puzzle, so the AI never gets called."""
+    import app as app_module
+    from examples import load
+
+    _, puzzle, clues = load()
+    monkeypatch.setattr(app_module, "anthropic_asker", lambda key: None)
+    monkeypatch.setattr(app_module, "translate", lambda text, ask, **kw: (puzzle, clues))
+    return puzzle, clues
+
+
+# The whole point of the split: translating must NOT solve. If an answer came
+# back here there would be something to anchor on before the check.
+def test_translating_does_not_solve(monkeypatch):
+    _fake_translation(monkeypatch)
+
+    body = client.post("/api/translate", json={"text": "a puzzle", "api_key": "sk-test"}).json()
+
+    assert len(body["clues"]) == 14
+    assert body["num_positions"] == 5
+    for absent in ("status", "answer", "trace"):
+        assert absent not in body
 
 
 # A missing key is a clear message, not a crash or a server-side charge.
-def test_solving_without_a_key_is_refused():
-    response = client.post("/api/solve", json={"text": "a puzzle", "api_key": ""})
+def test_translating_without_a_key_is_refused():
+    response = client.post("/api/translate", json={"text": "a puzzle", "api_key": ""})
 
     assert response.status_code == 400
     assert "API key" in response.json()["detail"]
@@ -63,7 +101,7 @@ def test_solving_without_a_key_is_refused():
 
 # An empty puzzle should not reach the API at all.
 def test_an_empty_puzzle_is_refused():
-    response = client.post("/api/solve", json={"text": "   ", "api_key": "sk-test"})
+    response = client.post("/api/translate", json={"text": "   ", "api_key": "sk-test"})
 
     assert response.status_code == 400
 
@@ -75,16 +113,16 @@ def test_a_broken_translation_is_reported_cleanly(monkeypatch):
     from translate import TranslationFailed
 
     def fails(text, ask, **kwargs):
-        raise TranslationFailed([["clue 1: unsupported operator '~~'"]])
+        raise TranslationFailed([["clue 1: unsupported operator"]])
 
     monkeypatch.setattr(app_module, "translate", fails)
     monkeypatch.setattr(app_module, "anthropic_asker", lambda key: None)
 
-    response = client.post("/api/solve", json={"text": "a puzzle", "api_key": "sk-test"})
+    response = client.post("/api/translate", json={"text": "a puzzle", "api_key": "sk-test"})
 
     assert response.status_code == 422
     assert "Could not read" in response.json()["detail"]["message"]
-    assert "~~" in response.json()["detail"]["attempts"][0][0]
+    assert "unsupported operator" in response.json()["detail"]["attempts"][0][0]
 
 
 # If the API itself is unreachable or the key is bad, say so plainly.
@@ -96,23 +134,171 @@ def test_an_api_failure_is_reported_cleanly(monkeypatch):
 
     monkeypatch.setattr(app_module, "anthropic_asker", explodes)
 
-    response = client.post("/api/solve", json={"text": "a puzzle", "api_key": "bad"})
+    response = client.post("/api/translate", json={"text": "a puzzle", "api_key": "bad"})
 
     assert response.status_code == 502
     assert "invalid x-api-key" in response.json()["detail"]
 
 
-# A successful custom puzzle goes all the way through to an explanation.
-def test_a_custom_puzzle_solves_end_to_end(monkeypatch):
-    import app as app_module
-    from examples import load
+# ---------------------------------------------------------------------------
+# /api/solve - the confirmed clues come back up and get solved
+# ---------------------------------------------------------------------------
 
-    _, puzzle, clues = load()
-    monkeypatch.setattr(app_module, "anthropic_asker", lambda key: None)
-    monkeypatch.setattr(app_module, "translate", lambda text, ask, **kw: (puzzle, clues))
 
-    body = client.post("/api/solve", json={"text": "a puzzle", "api_key": "sk-test"}).json()
+def _confirm(body, keep=None):
+    """Turn a /api/translate reply into a /api/solve request, the way the page
+    does. `keep` picks clue numbers, mimicking the checkboxes."""
+    rows = body["clues"] if keep is None else [c for c in body["clues"] if c["number"] in keep]
+    return {"num_positions": body["num_positions"],
+            "categories": body["categories"],
+            "clues": [row["clue"] for row in rows]}
+
+
+# The round trip: whatever translate hands down must be solvable when handed
+# straight back up. This is the join between the two requests, and the server
+# remembers nothing in between.
+def test_the_confirmation_round_trip_solves(monkeypatch):
+    _fake_translation(monkeypatch)
+    translated = client.post("/api/translate", json={"text": "x", "api_key": "k"}).json()
+
+    body = client.post("/api/solve", json=_confirm(translated)).json()
 
     assert body["status"] == "solved"
-    assert body["info"]["name"] == "Your puzzle"
+    by_position = {row["position"]: row["values"] for row in body["answer"]}
+    zebra = next(p for p, v in by_position.items() if v["pet"] == "zebra")
+    assert by_position[zebra]["nation"] == "Japanese"
     assert body["trace"]
+
+
+# Solving is pure logic - no AI, so no key, so no cost. Nothing in this
+# endpoint should ever want one.
+def test_solving_needs_no_api_key(monkeypatch):
+    _fake_translation(monkeypatch)
+    translated = client.post("/api/translate", json={"text": "x", "api_key": "k"}).json()
+
+    assert client.post("/api/solve", json=_confirm(translated)).status_code == 200
+
+
+# Switching a clue off can only ever WIDEN the set of valid answers, so the
+# result is either the same answer or an honest INCOMPLETE - never a wrong
+# answer. That property is what makes the checkboxes safe.
+def test_switching_a_clue_off_never_gives_a_wrong_answer(monkeypatch):
+    _fake_translation(monkeypatch)
+    translated = client.post("/api/translate", json={"text": "x", "api_key": "k"}).json()
+    full = client.post("/api/solve", json=_confirm(translated)).json()["answer"]
+
+    for dropped in (5, 8, 9):  # a direction clue, and both house-number clues
+        keep = [n for n in range(1, 15) if n != dropped]
+        body = client.post("/api/solve", json=_confirm(translated, keep)).json()
+
+        assert body["status"] in ("solved", "incomplete")
+        if body["status"] == "solved":
+            assert body["answer"] == full
+
+
+# Every clue in the Einstein puzzle turns out to be load-bearing, so the test
+# above only ever sees the "incomplete" half of the property. This is the other
+# half: a puzzle with a clue that adds nothing, which must still solve to the
+# very same answer once that clue is switched off.
+def test_switching_off_a_redundant_clue_keeps_the_same_answer():
+    puzzle = {"num_positions": 3,
+              "categories": {"color": ["red", "green", "blue"],
+                             "pet": ["dog", "cat", "fox"]}}
+    needed = [
+        {"type": "AbsolutePosition", "category_value": ["color", "red"],
+         "operator": "==", "position": 1},
+        {"type": "AbsolutePosition", "category_value": ["color", "green"],
+         "operator": "==", "position": 2},
+        {"type": "AbsolutePosition", "category_value": ["pet", "dog"],
+         "operator": "==", "position": 1},
+        {"type": "AbsolutePosition", "category_value": ["pet", "cat"],
+         "operator": "==", "position": 2},
+    ]
+    # True, but already forced by the four above: blue and fox have nowhere
+    # else left to go.
+    redundant = {"type": "AbsolutePosition", "category_value": ["color", "blue"],
+                 "operator": "==", "position": 3}
+
+    with_it = client.post("/api/solve", json={**puzzle, "clues": needed + [redundant]}).json()
+    without_it = client.post("/api/solve", json={**puzzle, "clues": needed}).json()
+
+    assert with_it["status"] == "solved"
+    assert without_it["status"] == "solved"
+    assert without_it["answer"] == with_it["answer"]
+
+
+# Switching every clue off is not a crash, just a puzzle nothing is known about.
+def test_switching_every_clue_off_is_honest(monkeypatch):
+    _fake_translation(monkeypatch)
+    translated = client.post("/api/translate", json={"text": "x", "api_key": "k"}).json()
+
+    body = client.post("/api/solve", json=_confirm(translated, keep=[])).json()
+
+    assert body["status"] == "incomplete"
+    assert body["answer"] is None
+
+
+# ---------------------------------------------------------------------------
+# /api/solve trusts nothing it is sent - the browser is no more trusted than
+# the AI was, and both meet the same guards.
+# ---------------------------------------------------------------------------
+
+
+def test_clues_that_are_not_clues_are_refused():
+    response = client.post("/api/solve", json={
+        "num_positions": 2,
+        "categories": {"color": ["red", "blue"]},
+        "clues": [{"type": "Nonsense", "operator": "??"}],
+    })
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["problems"]
+
+
+def test_a_clue_naming_something_unknown_is_refused():
+    response = client.post("/api/solve", json={
+        "num_positions": 2,
+        "categories": {"color": ["red", "blue"]},
+        "clues": [{"type": "AbsolutePosition", "category_value": ["color", "purple"],
+                   "operator": "==", "position": 1}],
+    })
+
+    assert response.status_code == 400
+    assert "purple" in str(response.json()["detail"])
+
+
+def test_a_puzzle_of_the_wrong_shape_is_refused():
+    response = client.post("/api/solve", json={
+        "num_positions": 5,
+        "categories": {"color": ["red", "blue"]},  # 2 values for 5 houses
+        "clues": [],
+    })
+
+    assert response.status_code == 400
+    assert "not a usable puzzle" in response.json()["detail"]
+
+
+# The page is plain JavaScript, so nothing else here would notice it calling an
+# endpoint that no longer exists. This is the cheap guard against that drift:
+# it would have caught the moment the endpoints split and the page did not.
+def test_the_page_calls_the_endpoints_that_exist():
+    page = client.get("/").text
+    routes = {r.path for r in app.routes}
+
+    for called in ("/api/translate", "/api/solve", "/api/example"):
+        assert called in page, f"the page never calls {called}"
+        assert called in routes, f"{called} is not a route"
+
+    # /api/solve must be sent the puzzle and its clues - never English and a
+    # key, which is what the old combined endpoint took.
+    assert 'num_positions: translated.num_positions' in page
+
+
+# The confirmation screen has to exist in the markup for the flow to work at
+# all, and its two buttons are what the script hangs its handlers on.
+def test_the_confirmation_screen_is_on_the_page():
+    page = client.get("/").text
+
+    for piece in ('id="confirm"', 'id="confirm-clues"', 'id="run-confirmed"',
+                  'id="back-to-text"', "Check what it understood"):
+        assert piece in page, f"missing {piece}"

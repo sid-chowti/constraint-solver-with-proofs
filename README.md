@@ -11,11 +11,12 @@ chain multi-step constraint logic, and a wrong answer that sounds confident is
 worse than no answer.
 
 ```
-English  ->  AI  ->  JSON  ->  parser  ->  validator  ->  SOLVER  ->  trace  ->  page
-             |                 |           |              |
-        language only     "is this a   "does the      all the reasoning,
-                            clue?"      puzzle have    and a proof of
-                                        these?"        every step
+English -> AI -> JSON -> parser -> validator -> YOU -> SOLVER -> trace -> page
+           |              |          |           |       |
+      language       "is this    "does the   "is this  all the reasoning,
+        only          a clue?"    puzzle      really    and a proof of
+                                  have        my        every step
+                                  these?"     puzzle?"
 ```
 
 ## What it guarantees
@@ -32,6 +33,45 @@ Three independent guards, each catching what the others cannot:
 The first two objections are fed back to the AI for a retry — they mean the
 translation was wrong, not that the puzzle is impossible. The last two can only
 mean a bug in this code, so they raise.
+
+## The one check no code can do
+
+The three guards above catch the AI contradicting itself. None of them can
+catch it *consistently* misreading you. If it turns "the green house is
+immediately to the right of the ivory house" around, every guard passes and the
+solver returns a guaranteed-correct answer to a puzzle you never asked. Spotting
+that needs someone who understands English — which is the exact job the AI was
+hired for, so it cannot also be the check.
+
+So the site asks you. Translating and solving are two separate steps, and in
+between it shows every clue it read:
+
+```
+"The green house is immediately to the right of the ivory house."
+  -> ivory (color) is immediately left of green (color)
+  -> so green (color) is immediately right of ivory (color)
+```
+
+Three rules make that screen worth reading:
+
+- **What it shows is built from the clue's data, never from your sentence.**
+  Echoing your own words back would be a mirror, not a check.
+- **Direction clues are said both ways**, so you never have to flip "left of"
+  into "right of" in your head — that flip is the mistake being hunted.
+- **The second reading comes from mirroring the clue's structure** (swap the
+  sides, negate the offset, reverse the operator) and describing that. Rewriting
+  the words would eventually turn "somewhere right of" into "immediately left
+  of" and invent a constraint. The mirror is checked against the solver's own
+  `allows()` over every operator, offset and pair of positions.
+
+Any clue can be switched off before solving. That can only ever *widen* the set
+of valid answers, so the result is the same answer or an honest `incomplete` —
+never a wrong one.
+
+Nothing is remembered between the two steps. The browser carries the clues back
+up, which is safe for the same reason the AI was never trusted: `/api/solve`
+runs every guard on whatever it is handed, and a visitor editing their own
+puzzle is the feature.
 
 ## How the solver works
 
@@ -93,8 +133,8 @@ dropped, never stored and never logged.
 .venv/bin/pytest -q
 ```
 
-214 tests. The translator's retry paths are all covered with canned replies, so
-they run without an API key.
+234 tests. The translator's retry paths and the whole confirm-then-solve flow
+are covered with canned replies, so everything runs without an API key.
 
 ## Layout
 
