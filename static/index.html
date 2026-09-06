@@ -198,11 +198,17 @@
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
+/* NOTE: no behavior:'smooth' anywhere in this file. Smooth scrolling is a
+   no-op when the reader has 'reduce motion' turned on, which silently breaks
+   every scroll that matters - including moving an error message into view. */
 function say(text, isError) {
   const m = $('msg');
   m.textContent = text;
   m.className = 'note' + (isError ? ' err' : '');
   m.classList.toggle('hidden', !text);
+  /* This line lives near the top of the page, but the button that caused the
+     trouble may be far below it — an unseen error reads as "nothing happened". */
+  if (text && isError) m.scrollIntoView({block: 'center'});
 }
 
 /* ---------------------------------------------------------------------------
@@ -428,12 +434,22 @@ function drawViewer() {
   mount.innerHTML = html + narrateButton();
 
   const write = $('narrate');
-  if (write) write.onclick = ev => call('/api/narrate',
-    post({...solvedPayload, api_key: $('key').value}),
-    ev.target, 'Writing the explanation…', body => {
-      viewer.prose = body.prose;
-      drawViewer();
-    });
+  if (write) write.onclick = ev => {
+    if (!$('key').value.trim()) {
+      say('Writing the explanation needs your API key — open "Or type your own '
+          + 'puzzle" at the top and paste it in.', true);
+      return;
+    }
+    call('/api/narrate', post({...solvedPayload, api_key: $('key').value}),
+         ev.currentTarget, 'Writing the explanation… this takes a few seconds.',
+         body => {
+           viewer.prose = body.prose;
+           drawViewer();
+           /* Put the reader back on the step they were reading, now in words. */
+           $('viewer').scrollIntoView({block: 'start'});
+         },
+         true);   // keep the answer on screen while it is written
+  };
 
   const prev = $('step-prev'), next = $('step-next'), out = $('step-out');
   const why = $('why-toggle');
@@ -551,7 +567,7 @@ function showConfirm(body) {
   $('confirm').classList.remove('hidden');
   $('out').classList.add('hidden');
   refreshCount();
-  $('confirm').scrollIntoView({behavior: 'smooth', block: 'start'});
+  $('confirm').scrollIntoView({block: 'start'});
 }
 
 function checkboxes() {
@@ -627,9 +643,15 @@ function render(data, info) {
 /* --- talking to the server ----------------------------------------------- */
 
 /* `then` decides what to do with a good reply, so the same plumbing serves
-   both the translate step and the solve step. */
-async function call(url, options, button, working, then) {
-  $('out').classList.add('hidden');
+   both the translate step and the solve step.
+
+   `keepOut` is for calls that ADD to the answer already on screen instead of
+   replacing it. Hiding the output is right when a new answer is coming, and
+   wrong when the reader is part-way down the proof waiting for wording — the
+   answer would vanish and, since only the viewer inside it gets redrawn, never
+   come back. */
+async function call(url, options, button, working, then, keepOut) {
+  if (!keepOut) $('out').classList.add('hidden');
   button.disabled = true;
   say(working);
   try {
