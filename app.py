@@ -178,7 +178,11 @@ def _solved(puzzle, clues):
     return {
         "status": result.status.value,
         "reason": result.reason,
+        # Names in order for the answer table; the values themselves so the
+        # page can draw the grid of what was still possible at each step.
         "categories": list(puzzle.categories),
+        "values": puzzle.categories,
+        "num_positions": puzzle.num_positions,
         "answer": _answer_rows(puzzle, result.assignment),
         "clues": _clue_rows(clues),
         "trace": to_ai_payload(result.trace or [], clues),

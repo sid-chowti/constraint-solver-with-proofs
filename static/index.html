@@ -64,6 +64,34 @@
   .said { margin: 2px 0 0; font-size: 14px; color: var(--soft); }
   .said.mirror { color: var(--accent); }
 
+  /* The step-through viewer: one step at a time, on a grid you can follow. */
+  .nav { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .nav button { padding: 8px 14px; }
+  .where { font-variant-numeric: tabular-nums; font-size: 14px; color: var(--soft); }
+  .crumb { font-size: 13.5px; color: var(--accent); margin: 0 0 10px; }
+  .pretend { border-color: var(--accent); background:
+             repeating-linear-gradient(45deg, transparent, transparent 12px,
+             var(--accent-soft) 12px, var(--accent-soft) 24px); }
+  .pretend-note { margin: 0 0 12px; font-size: 13.5px; color: var(--accent); font-weight: 600; }
+  .branches { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .branches { flex-direction: column; align-items: flex-start; }
+  .branches button { font-size: 13px; padding: 6px 11px; text-align: left; }
+  .whytoggle { margin-top: 12px; }
+
+  .gridwrap { overflow-x: auto; margin-top: 14px; }
+  table.pgrid { border-collapse: collapse; font-size: 12.5px; width: 100%; }
+  table.pgrid th { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em;
+                   color: var(--soft); padding: 6px 8px; white-space: nowrap; }
+  table.pgrid td { vertical-align: top; padding: 4px 8px; border: 1px solid var(--line);
+                   white-space: nowrap; }
+  table.pgrid th.cat { text-align: right; border: 1px solid var(--line); }
+  .chip { display: block; color: var(--soft); line-height: 1.25; font-size: 11.5px; }
+  .chip.dead { text-decoration: line-through; opacity: 0.28; }
+  /* Struck off by the step you are looking at right now. */
+  .chip.hit { text-decoration: line-through; opacity: 1; color: var(--bad); font-weight: 700; }
+  .chip.only { color: var(--good); font-weight: 700; }
+  .chip.supposed { color: var(--accent); font-weight: 700; }
+
   .scroll { overflow-x: auto; }
   table { border-collapse: collapse; width: 100%; font-size: 15px; }
   th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
@@ -166,44 +194,268 @@ function say(text, isError) {
   m.classList.toggle('hidden', !text);
 }
 
-/* One group of steps. Recurses for the sub-proofs behind a refutation. */
-function renderGroup(g) {
-  const kindClass = g.kind === 'conclude' ? 'concluded'
-                  : g.kind === 'contradiction' ? 'broke' : '';
-  let html = '<div class="step">';
-  html += `<p class="fact ${kindClass}">${esc(g.says[0])}</p>`;
+/* ---------------------------------------------------------------------------
+   The step-through viewer.
 
-  if (g.says.length > 1) {
-    html += `<p class="more">&hellip; and ${g.says.length - 1} more the same way: `
-          + g.says.slice(1).map(esc).join('; ') + '</p>';
+   The trace is a TREE, not a list. A step can hang a sub-proof under itself —
+   "assume this, and here is what breaks". Printing those inline would show
+   facts that were only ever true inside a pretend world as though they were
+   real, which is the one thing this project will not do. So you step INTO a
+   sub-proof and back out of it, and the pretend grid is marked as pretend.
+
+   The grid is rebuilt by replaying eliminations from an empty start, which is
+   the same thing verify_trace does on the server. Nothing here is trusted to
+   know the answer; it only re-runs what the solver recorded.
+   --------------------------------------------------------------------------- */
+
+let viewer = null;
+
+const cellKey = (category, position) => category + ' ' + position;
+const chipKey = (category, position, value) => cellKey(category, position) + ' ' + value;
+
+/* Everything still possible before any step has run. */
+function freshGrid() {
+  const grid = {};
+  for (const name of viewer.names) {
+    for (const p of viewer.positions) grid[cellKey(name, p)] = new Set(viewer.values[name]);
+  }
+  return grid;
+}
+
+/* Fold one step into a grid. Only two kinds move anything: an elimination
+   crosses a value off, and a supposition pins a cell to one value for the sake
+   of argument. A conclusion is just a cell that ran out of alternatives, and a
+   contradiction is a marker — neither changes what is possible. */
+function applyStep(grid, step) {
+  if (step.kind === 'eliminate') {
+    step.facts.forEach(f => grid[cellKey(f.category, f.position)].delete(f.value));
+  } else if (step.kind === 'suppose') {
+    step.facts.forEach(f => {
+      if (f.value !== null) grid[cellKey(f.category, f.position)] = new Set([f.value]);
+    });
+  }
+}
+
+/* The steps at the level being viewed, and the grid as it stood after `index`
+   of them. Descending into a sub-proof rewinds to the world just BEFORE its
+   parent step ran — that is the grid the sub-proof was copied from. */
+function stateAt(path, index) {
+  let steps = viewer.groups;
+  const grid = freshGrid();
+  for (const hop of path) {
+    for (let i = 0; i < hop.step; i++) applyStep(grid, steps[i]);
+    steps = steps[hop.step].children[hop.branch].steps;
+  }
+  for (let i = 0; i < index; i++) applyStep(grid, steps[i]);
+  return {steps, grid};
+}
+
+/* The sub-proofs we have descended through, outermost first. */
+function branchChain() {
+  let steps = viewer.groups;
+  const chain = [];
+  for (const hop of viewer.path) {
+    const sub = steps[hop.step].children[hop.branch];
+    chain.push(sub);
+    steps = sub.steps;
+  }
+  return chain;
+}
+
+function branchName(sub) {
+  if (!sub.assuming) return 'this branch';
+  /* A shaving assumption arrives as a plain sentence. An Or branch arrives as
+     a clue reference, where `says` is what THIS branch supposes and `text` is
+     the whole clue it came from — every branch shares that text, so `says` is
+     the only thing that tells two branches apart. */
+  if (typeof sub.assuming === 'string') return sub.assuming;
+  return sub.assuming.says || sub.assuming.text || 'this branch';
+}
+
+/* The board. Values keep their places and get struck through as they die, so
+   your eye can follow one cell from step to step. */
+function renderGrid(grid, step) {
+  const hit = new Set(), supposed = new Set();
+  if (step && step.kind === 'eliminate') {
+    step.facts.forEach(f => hit.add(chipKey(f.category, f.position, f.value)));
+  }
+  if (step && step.kind === 'suppose') {
+    step.facts.forEach(f => supposed.add(chipKey(f.category, f.position, f.value)));
+  }
+
+  let html = '<table class="pgrid"><thead><tr><th></th>';
+  viewer.positions.forEach(p => html += `<th>House ${p}</th>`);
+  html += '</tr></thead><tbody>';
+
+  for (const name of viewer.names) {
+    html += `<tr><th class="cat">${esc(name)}</th>`;
+    for (const p of viewer.positions) {
+      const alive = grid[cellKey(name, p)];
+      html += '<td>';
+      for (const value of viewer.values[name]) {
+        const id = chipKey(name, p, value);
+        let cls = 'chip';
+        if (hit.has(id)) cls += ' hit';                 /* crossed off by THIS step */
+        else if (!alive.has(value)) cls += ' dead';
+        else if (supposed.has(id)) cls += ' supposed';
+        else if (alive.size === 1) cls += ' only';      /* nothing else left here */
+        html += `<span class="${cls}">${esc(value)}</span>`;
+      }
+      html += '</td>';
+    }
+    html += '</tr>';
+  }
+  return html + '</tbody></table>';
+}
+
+/* What this one step says, why it follows, and the way into its sub-proofs. */
+function renderCard(step) {
+  const kindClass = step.kind === 'conclude' ? 'concluded'
+                  : step.kind === 'contradiction' ? 'broke' : '';
+  let html = `<p class="fact ${kindClass}">${esc(step.says[0])}</p>`;
+  if (step.says.length > 1) {
+    html += `<p class="more">&hellip; and ${step.says.length - 1} more the same way: `
+          + step.says.slice(1).map(esc).join('; ') + '</p>';
   }
 
   const bits = [];
-  if (g.clue && g.clue.text) {
-    bits.push(g.clue.kind === 'rule'
-      ? `rule: ${esc(g.clue.text)}`
-      : `clue ${g.clue.number ?? ''} &mdash; <em>&ldquo;${esc(g.clue.text)}&rdquo;</em>`);
+  if (step.clue && step.clue.text) {
+    bits.push(step.clue.kind === 'rule'
+      ? `rule: ${esc(step.clue.text)}`
+      : `clue ${step.clue.number ?? ''} &mdash; <em>&ldquo;${esc(step.clue.text)}&rdquo;</em>`);
   }
-  if (g.because && g.because.length) {
-    bits.push('because ' + g.because.map(b => esc(b.says)).join(', and '));
+  if (step.because && step.because.length) {
+    bits.push('because ' + step.because.map(b => esc(b.says)).join(', and '));
   }
   if (bits.length) html += `<p class="why">${bits.join(' &middot; ')}</p>`;
 
-  (g.children || []).forEach(sub => {
-    const ended = sub.ended_in_contradiction ? 'that turned out to be impossible'
-                                             : 'the same thing follows';
-    /* `assuming` is a sentence for a shaving refutation, but a clue reference
-       for an Or branch, and may be absent entirely. */
-    const about = !sub.assuming ? 'this branch'
-                : sub.assuming.text ? `“${sub.assuming.text}”`
-                : sub.assuming;
-    html += `<details class="proof"><summary>${esc(about)} &rarr; ${ended}</summary>`;
-    html += (sub.steps || []).map(renderGroup).join('');
-    html += '</details>';
-  });
-
-  return html + '</div>';
+  return html;
 }
+
+/* The ways into this step's pretend worlds. Folded away by default: a step can
+   carry eight of them, and unfolded they push the grid off the screen. */
+function renderBranches(step) {
+  if (!step.children || !step.children.length) return '';
+
+  const count = step.children.length;
+  let html = `<div class="whytoggle"><button id="why-toggle" class="ghost">`
+           + `${viewer.showWhy ? '&darr; Hide' : '&rarr; Show'} the ${count} `
+           + `proof${count > 1 ? 's' : ''} behind this</button></div>`;
+  if (!viewer.showWhy) return html;
+
+  /* One group can merge several removals, each carrying its own pretend
+     worlds. Sort them under the fact they argue about, or they arrive as one
+     flat pile of near-identical buttons. */
+  const byFact = new Map();
+  step.children.forEach((sub, i) => {
+    if (!byFact.has(sub.for)) byFact.set(sub.for, []);
+    byFact.get(sub.for).push([sub, i]);
+  });
+  for (const [fact, subs] of byFact) {
+    if (byFact.size > 1) html += `<p class="why">why ${esc(fact)}?</p>`;
+    html += '<div class="branches">';
+    for (const [sub, i] of subs) {
+      const ended = sub.ended_in_contradiction
+        ? 'turned out impossible' : 'holds, and agrees';
+      html += `<button class="ghost" data-branch="${i}">`
+            + `assume ${esc(branchName(sub))} &rarr; ${ended}</button>`;
+    }
+    html += '</div>';
+  }
+  return html;
+}
+
+function drawViewer() {
+  const {steps, grid} = stateAt(viewer.path, viewer.index);
+  const step = steps[viewer.index - 1];
+  const chain = branchChain();
+  const inside = chain.length > 0;
+
+  let html = '<div class="nav">';
+  html += `<button id="step-prev"${viewer.index <= 1 ? ' disabled' : ''}>&larr; Back</button>`;
+  html += `<span class="where">Step ${viewer.index} of ${steps.length}</span>`;
+  html += `<button id="step-next"${viewer.index >= steps.length ? ' disabled' : ''}>Next &rarr;</button>`;
+  if (inside) html += '<button id="step-out" class="ghost">&uarr; Back to the real puzzle</button>';
+  html += '</div>';
+
+  if (inside) {
+    html += '<p class="crumb">' + chain.map(s => 'assuming ' + esc(branchName(s))).join(' &rsaquo; ') + '</p>';
+  }
+
+  html += `<div class="panel${inside ? ' pretend' : ''}">`;
+  if (inside) {
+    const last = chain[chain.length - 1];
+    html += '<p class="pretend-note">Pretend world &mdash; nothing on this grid is known to be true. '
+          + (last.ended_in_contradiction
+              ? 'It ends in a contradiction, which is what rules the assumption out.'
+              : 'This branch survives, and it agrees with the others.')
+          + '</p>';
+  }
+  html += renderCard(step);
+  html += '<div class="gridwrap">' + renderGrid(grid, step) + '</div>';
+  html += renderBranches(step);
+  html += '</div>';
+
+  const mount = $('viewer');
+  mount.innerHTML = html;
+
+  const prev = $('step-prev'), next = $('step-next'), out = $('step-out');
+  const why = $('why-toggle');
+  if (prev) prev.onclick = () => move(-1);
+  if (next) next.onclick = () => move(1);
+  if (out) out.onclick = leaveBranch;
+  if (why) why.onclick = () => { viewer.showWhy = !viewer.showWhy; drawViewer(); };
+  mount.querySelectorAll('[data-branch]').forEach(b => {
+    b.onclick = () => enterBranch(Number(b.dataset.branch));
+  });
+}
+
+function move(by) {
+  const {steps} = stateAt(viewer.path, 0);
+  const next = viewer.index + by;
+  if (next < 1 || next > steps.length) return;
+  viewer.index = next;
+  viewer.showWhy = false;
+  drawViewer();
+}
+
+function enterBranch(branch) {
+  viewer.path.push({step: viewer.index - 1, branch});
+  viewer.index = 1;
+  viewer.showWhy = false;
+  drawViewer();
+}
+
+function leaveBranch() {
+  const hop = viewer.path.pop();
+  viewer.index = hop.step + 1;   /* land back on the step you came from */
+  viewer.showWhy = false;
+  drawViewer();
+}
+
+function startViewer(data) {
+  if (!data.trace.length) { $('viewer').innerHTML = ''; viewer = null; return; }
+  viewer = {
+    names: data.categories,
+    values: data.values,
+    positions: Array.from({length: data.num_positions}, (_, i) => i + 1),
+    groups: data.trace,
+    path: [],
+    index: 1,
+    showWhy: false,
+  };
+  drawViewer();
+}
+
+/* Arrow keys walk the proof; Escape leaves a pretend world. Ignored while
+   typing, so the puzzle textarea still behaves normally. */
+document.addEventListener('keydown', e => {
+  if (!viewer || $('out').classList.contains('hidden')) return;
+  if (['TEXTAREA', 'INPUT'].includes(e.target.tagName)) return;
+  if (e.key === 'ArrowRight') { move(1); e.preventDefault(); }
+  else if (e.key === 'ArrowLeft') { move(-1); e.preventDefault(); }
+  else if (e.key === 'Escape' && viewer.path.length) { leaveBranch(); e.preventDefault(); }
+});
 
 /* What the last translation handed down. The server keeps nothing between
    requests, so this is the only copy — the page carries the puzzle from the
@@ -298,10 +550,11 @@ function render(data, info) {
   }
 
   html += `<h2>How it worked it out &mdash; ${data.trace.length} steps</h2>`;
-  html += '<div class="panel">' + data.trace.map(renderGroup).join('') + '</div>';
+  html += '<div id="viewer"></div>';
 
   out.innerHTML = html;
   out.classList.remove('hidden');
+  startViewer(data);
 }
 
 /* --- talking to the server ----------------------------------------------- */

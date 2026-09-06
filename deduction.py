@@ -273,6 +273,11 @@ def _sub_proofs(group, clue_numbers):
     for step in group.steps:
         for sub in step.children:
             proofs.append({
+                # Which of this group's facts this pretend world was run for.
+                # A group can merge several removals, each with its own set of
+                # sub-proofs, and without this they arrive as one flat pile
+                # with nothing to say what each one was arguing about.
+                "for": describe(step),
                 "assuming": _about_reference(sub.about, clue_numbers),
                 "ended_in_contradiction": sub.refuted,
                 "steps": _payload_for(group_steps(sub.steps), clue_numbers),
@@ -303,4 +308,14 @@ def _about_reference(about, clue_numbers):
     branch is a whole clue."""
     if isinstance(about, Step):
         return describe(about)
-    return _clue_reference(about, clue_numbers)
+
+    reference = _clue_reference(about, clue_numbers)
+
+    # An Or's branches all share the parent's number and the parent's sentence,
+    # so the citation alone cannot tell two branches apart - every branch of
+    # "the Norwegian lives next to the blue house" cites that same sentence.
+    # Add what THIS branch actually supposes, which is the only thing that
+    # distinguishes them.
+    if reference is not None and hasattr(about, "describe"):
+        reference = dict(reference, says=about.describe())
+    return reference

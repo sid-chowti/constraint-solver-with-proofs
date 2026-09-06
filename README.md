@@ -111,6 +111,21 @@ Two structures come out of that:
 Neighbouring steps sharing a reason and its evidence are grouped, so the Zebra
 puzzle reads as 74 steps rather than 125.
 
+You walk those 74 one at a time, not as a wall of text. Each step shows the
+fact, the clue it came from, and the board as it stood at that moment — values
+struck through as they die, the ones this step killed picked out in red, and a
+cell that has run out of alternatives in green. Arrow keys move.
+
+The board is rebuilt in the browser by replaying eliminations from an empty
+start, which is the same thing `verify_trace` does on the server, so the picture
+cannot drift from what the solver actually did.
+
+Sub-proofs are the interesting part. A step can hang 88 pretend worlds under
+itself, and printing them inline would show facts that were only ever true
+inside an assumption as though they were real. So you step *into* one: the grid
+switches to that pretend world, says plainly that nothing on it is known to be
+true, runs to its contradiction, and you back out.
+
 ## Running it
 
 ```bash
@@ -133,7 +148,7 @@ dropped, never stored and never logged.
 .venv/bin/pytest -q
 ```
 
-234 tests. The translator's retry paths and the whole confirm-then-solve flow
+236 tests. The translator's retry paths and the whole confirm-then-solve flow
 are covered with canned replies, so everything runs without an API key.
 
 ## Layout

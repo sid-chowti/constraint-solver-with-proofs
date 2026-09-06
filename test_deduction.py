@@ -209,3 +209,59 @@ def test_payload_resolves_a_clue_nested_inside_a_combined_one():
         "number": 1,
         "text": "The red house is at one end of the street.",
     }
+
+
+# ---------------------------------------------------------------------------
+# Sub-proof labels have to tell one pretend world from another
+# ---------------------------------------------------------------------------
+
+
+def test_or_branches_are_told_apart_by_what_they_suppose():
+    """Every branch of an Or cites the same parent sentence, so the citation
+    alone labels them all identically. `says` carries what each branch actually
+    supposes, which is the only thing that distinguishes them."""
+    from examples import load
+    from solve import solve
+    from deduction import to_ai_payload
+
+    _, puzzle, clues = load()
+    payload = to_ai_payload(solve(puzzle, clues).trace, clues)
+
+    withsubs = [g for g in payload if g["children"]]
+    assert withsubs, "the Einstein puzzle should produce sub-proofs"
+
+    for group in withsubs:
+        branches = [c for c in group["children"]
+                    if isinstance(c["assuming"], dict) and c["assuming"].get("says")]
+        for sub in branches:
+            # The parent's sentence is still there for citation...
+            assert sub["assuming"]["text"]
+            # ...but the branch says something of its own, and they differ.
+            assert sub["assuming"]["says"] != sub["assuming"]["text"]
+
+    # Concretely: the two branches of "next to" must not read the same.
+    group = next(g for g in payload
+                 if len({c["assuming"].get("says") for c in g["children"]
+                         if isinstance(c["assuming"], dict)}) > 1)
+    said = {c["assuming"]["says"] for c in group["children"]
+            if isinstance(c["assuming"], dict)}
+    assert len(said) > 1
+
+
+def test_every_sub_proof_names_the_fact_it_argues_for():
+    """A group can merge several removals, each with its own pretend worlds.
+    Without `for`, they arrive as one flat pile with nothing saying which
+    removal each was run for."""
+    from examples import load
+    from solve import solve
+    from deduction import to_ai_payload
+
+    _, puzzle, clues = load()
+    payload = to_ai_payload(solve(puzzle, clues).trace, clues)
+
+    merged = next(g for g in payload if len(g["facts"]) > 1 and g["children"])
+    for sub in merged["children"]:
+        assert sub["for"] in merged["says"], "a sub-proof must point at one of its group's own facts"
+
+    # That group really does argue about more than one fact.
+    assert len({sub["for"] for sub in merged["children"]}) > 1
