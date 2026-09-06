@@ -1,3 +1,6 @@
-anthropic>=0.40.0
+# 1.x, not 0.x: the SDK had a major version bump, and the code uses
+# thinking={"type": "adaptive"}, which older releases reject outright.
+# Pinned to the floor actually tested against.
+anthropic>=1.4.0
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
