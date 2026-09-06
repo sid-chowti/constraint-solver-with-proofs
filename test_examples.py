@@ -81,18 +81,6 @@ def test_the_stored_prose_still_matches_the_trace():
     assert problems_with({str(k): v for k, v in prose.items()}, groups) == []
 
 
-def test_every_stored_sentence_is_real_english():
-    """Cheap sanity: the stored file is hand-written, so a truncated or
-    placeholder entry would otherwise sit there unnoticed."""
-    from examples import load_prose
-
-    for step, sentence in load_prose().items():
-        assert len(sentence) > 20, f"step {step} has a stub sentence"
-        # A sentence may legitimately open with a quoted clue.
-        assert sentence.lstrip('"“').lstrip()[0].isupper(), f"step {step} does not start a sentence"
-        assert sentence.rstrip()[-1] in ".!?", f"step {step} is unfinished"
-
-
 def test_a_puzzle_with_no_stored_prose_says_so():
     from examples import load_prose
 
@@ -175,3 +163,64 @@ def test_stored_prose_where_present_still_matches_the_trace(name):
     groups = for_writing(to_ai_payload(solve(puzzle, clues).trace, clues))
 
     assert problems_with({str(k): v for k, v in prose.items()}, groups) == []
+
+
+# A step proved by checking cases was NOT read straight off its clue, and the
+# clue often says nothing about what the step concludes - one Einstein step
+# rules out WATER while citing a clue about nationalities and colours. Wording
+# it as "the clue says X, so Y" would be a confident lie that no structural
+# check can catch, so the stored prose has to visibly hedge instead.
+#
+# Two honest shapes, matching the two ways a case split is settled: "whichever
+# way this falls, ..." for an Or, and "assuming otherwise broke the puzzle" for
+# a shaving refutation.
+HEDGES = (
+    "broke the puzzle",
+    "both ways", "both times", "both sides", "both ends",
+    "each side", "each end", "each way", "each time",
+    "either way", "whichever", "every time",
+    "same check", "one more pass",
+    "working through", "trying each", "testing each", "checking",
+)
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_case_split_steps_do_not_claim_the_clue_said_it(name):
+    from deduction import to_ai_payload
+    from narrate import for_writing
+    from solve import solve
+
+    prose = load_prose(name)
+    if prose is None:
+        return
+
+    _, puzzle, clues = load(name)
+    groups = for_writing(to_ai_payload(solve(puzzle, clues).trace, clues))
+
+    unhedged = []
+    for group in groups:
+        if not group["cases"]:
+            continue
+        # Hyphens are a wording choice, not a meaning one: "both-ways" counts.
+        said = prose[group["id"]].lower().replace("-", " ")
+        if not any(hedge in said for hedge in HEDGES):
+            unhedged.append((group["id"], prose[group["id"]]))
+
+    assert not unhedged, (
+        f"{name}: these steps were settled by checking cases, but their wording "
+        f"reads as if the clue said so outright: {unhedged}")
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_stored_prose_reads_as_finished_sentences(name):
+    """Cheap sanity on hand-written text: a stub or a truncated line would
+    otherwise sit in the demo unnoticed."""
+    prose = load_prose(name)
+    if prose is None:
+        return
+
+    for step, sentence in prose.items():
+        assert len(sentence) > 20, f"{name} step {step} is a stub"
+        assert sentence.lstrip('"“').lstrip()[0].isupper(), \
+            f"{name} step {step} does not start a sentence"
+        assert sentence.rstrip()[-1] in ".!?", f"{name} step {step} is unfinished"

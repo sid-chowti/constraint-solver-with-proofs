@@ -181,11 +181,22 @@ would cheerfully explain that the clue says something it does not, so each step
 is told how many cases had to be checked, and told to say "whichever way this
 clue falls, ..." rather than putting words in the clue's mouth.
 
-The bundled puzzle ships with its 74 sentences already written and checked in,
-so the demo reads as English with **no API key and no cost**. A test re-runs the
-same structural check against the live trace, so the stored wording cannot
-quietly drift out of step with the solver. For your own puzzle it is a separate,
-opt-in button - the answer and the proof are complete without it.
+All three bundled puzzles ship with their wording already written and checked
+in — 201 sentences — so every demo reads as English with **no API key and no
+cost**. For a puzzle you type yourself it is a separate, opt-in button; the
+answer and the proof are complete without it.
+
+Stored wording is hand-written, so it can rot silently. Three tests stop that:
+
+- the same **structural check** the AI's own replies must pass, re-run against
+  the live trace, so wording cannot drift out of step with the solver
+- every sentence is a **finished sentence** — no stubs, no truncation
+- every **case-split step visibly hedges**. This is the one the structure cannot
+  catch: writing *"the gyros truck is next to the taco truck, so truck 2 isn't
+  Rosa"* is a confident lie about a step that was actually settled by trying
+  both arrangements. The test knows which steps were proved by cases and insists
+  their wording says so — *"whichever way this falls…"*, or *"assuming otherwise
+  broke the puzzle"*.
 
 ## Running it
 
@@ -223,7 +234,7 @@ never logged.
 .venv/bin/pytest -q
 ```
 
-287 tests. The translator's retry paths and the whole confirm-then-solve flow
+292 tests. The translator's retry paths and the whole confirm-then-solve flow
 are covered with canned replies, so everything runs without an API key.
 
 ## Layout
