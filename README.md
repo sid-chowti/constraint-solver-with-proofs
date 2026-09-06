@@ -11,17 +11,19 @@ chain multi-step constraint logic, and a wrong answer that sounds confident is
 worse than no answer.
 
 ```
-English -> AI -> JSON -> guards -> YOU -> SOLVER -> trace -> AI -> page
-           |               |        |        |                |
-       language        "is this  "is this  all the        wording only,
-         only          a clue,   really     reasoning,    on a finished
-                       and real  my         and a proof   proof it may
-                       words?"   puzzle?"   of it         not change
+English -> AI -> JSON -> guards -> YOU -> SOLVER -> trace -> page
+           |               |        |        |
+       language        "is this  "is this  all the reasoning,
+         only          a clue,   really     and a proof of
+                       and real  my         every step
+                       words?"   puzzle?"
 ```
 
-The AI appears twice and reasons neither time. It reads the English at the
-front; it writes the English at the back. Everything between is a plain
-algorithm and a person.
+**The AI appears once, at the front door, and it does not reason there.** It
+turns your sentences into structured clues. Everything after that is a plain
+algorithm and a person - no model reads the grid, decides a step, or writes the
+explanation. One endpoint in the whole application can reach a model, and a
+test keeps it that way.
 
 ## What it guarantees
 
@@ -154,14 +156,33 @@ true, runs to its contradiction, and you back out.
 
 ## Putting the proof into words
 
-The solver's own wording is exact and mechanical - *"the smoke at position 3 is
-not Kools"*. A second, tightly fenced AI pass turns each step into a sentence:
+The solver's own wording is exact and mechanical, and it arrives with its
+reasons attached:
+
+```
+fact:  the smoke at position 3 is not Kools
+from:  "Kools are smoked in the yellow house."
+leans: the color at position 3 is not yellow
+```
+
+Everything needed is already there - the fact, the clue behind it, and what it
+rested on - which is why **a puzzle you type shows exactly that, and the app
+never calls a model to dress it up.** The AI is reachable from one endpoint in
+the whole application, and that endpoint reads English; it does not write it. A
+test asserts that.
+
+The bundled puzzles do read as sentences:
 
 > Kools are smoked in the yellow house, and house 3 can't be yellow, so house 3
 > doesn't smoke Kools.
 
-Handing an AI the explanation sounds like the one thing this project refuses to
-do. Three things make it safe:
+Those were written once and checked in. `narrate.py` and `narrate_example.py`
+produce them, but they are **maintenance tooling, not part of the running app** -
+you point the script at a puzzle when the stored wording needs rebuilding.
+
+Letting anything write the explanation sounds like the one thing this project
+refuses to allow. Three things make it safe, and they apply to the script the
+same way they applied when it ran live:
 
 - **It cannot change the proof.** Every step carries an id, and the reply must
   use each id exactly once. A dropped step, an invented step, or two steps
@@ -183,8 +204,7 @@ clue falls, ..." rather than putting words in the clue's mouth.
 
 All three bundled puzzles ship with their wording already written and checked
 in — 201 sentences — so every demo reads as English with **no API key and no
-cost**. For a puzzle you type yourself it is a separate, opt-in button; the
-answer and the proof are complete without it.
+cost**.
 
 Stored wording is hand-written, so it can rot silently. Three tests stop that:
 
@@ -234,7 +254,7 @@ never logged.
 .venv/bin/pytest -q
 ```
 
-298 tests. The translator's retry paths and the whole confirm-then-solve flow
+296 tests. The translator's retry paths and the whole confirm-then-solve flow
 are covered with canned replies, so everything runs without an API key.
 
 ## Layout
@@ -249,7 +269,7 @@ verify.py       independent checks on the answer and on the explanation
 solve.py        propagation, shaving, and the public solve() front door
 parsing.py      untrusted data -> real clues, or a clear list of complaints
 grounding.py    did the user actually write this value, or did the AI invent it
-narrate.py      the finished proof -> English, with the ids as the check
+narrate.py      maintenance only: proof -> English, with the ids as the check
 narrate_example.py  maintenance only: rewrite a bundled puzzle's stored wording
 translate.py    English -> clues, with the guards as the judge
 app.py          the web layer

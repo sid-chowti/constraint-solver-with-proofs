@@ -18,6 +18,11 @@ Three ways in:
     POST /api/solve      those clues back again. Returns the answer and the
                          explanation. No AI, no key, no cost.
 
+The AI appears in exactly one place in this file: reading the user's English.
+Nothing else here has a model behind it. Bundled puzzles ship with their
+wording already written (see narrate_example.py, a maintenance script that is
+not part of the running app); a puzzle you type shows the solver's own.
+
 WHY TWO STEPS. No code can catch the AI *consistently* misreading a sentence.
 If it reverses "green is immediately left of white", every guard passes and the
 solver returns a guaranteed-correct answer to the wrong puzzle. Catching that
@@ -49,8 +54,6 @@ from deduction import to_ai_payload
 from examples import available, load, load_prose
 from parsing import UnreadableClues, clue_to_json, clues_from_json
 from puzzle import Puzzle
-from narrate import NarrationFailed, narrate
-from narrate import anthropic_asker as narrating_asker
 from solve import solve
 from translate import TranslationFailed, anthropic_asker, translate, warnings_for
 
@@ -158,44 +161,6 @@ def solve_puzzle(request: SolveRequest):
         })
 
 
-class NarrateRequest(SolveRequest):
-    """A solve request, plus the key to pay for the wording."""
-
-    api_key: str
-
-
-@app.post("/api/narrate")
-def narrate_puzzle(request: NarrateRequest):
-    """Put an already-solved proof into plain English.
-
-    Opt-in and separate from solving, because it costs the visitor money and
-    the answer is already complete without it. The puzzle is re-solved here
-    rather than having the browser send its trace back up: solving takes
-    milliseconds, and the prose must describe the proof this code actually
-    produced, not a version that came back from somewhere else.
-    """
-    if not request.api_key.strip():
-        raise HTTPException(400, "An API key is needed to write the explanation.")
-
-    puzzle, clues = _puzzle_and_clues(request)
-    result = solve(puzzle, clues)
-    groups = to_ai_payload(result.trace or [], clues)
-
-    try:
-        prose = narrate(groups, narrating_asker(request.api_key.strip()))
-    except NarrationFailed as failed:
-        # The wording could not be trusted, so none of it is used - a half
-        # narrated proof is worse than none, because nothing marks the gaps.
-        raise HTTPException(422, {
-            "message": "The explanation did not line up with the proof, so it was thrown away.",
-            "problems": failed.attempts[-1] if failed.attempts else [],
-        })
-    except Exception as broken:  # noqa: BLE001 - the API call can fail many ways
-        raise HTTPException(502, f"The writing service failed: {broken}")
-
-    return {"prose": prose}
-
-
 def _clue_rows(clues):
     """Each clue three ways: the sentence it came from, what the solver
     actually understood, and the data itself so the browser can hand it back.
@@ -217,8 +182,8 @@ def _clue_rows(clues):
 def _puzzle_and_clues(request):
     """Untrusted JSON -> a real Puzzle and real clues, or a 400 saying why.
 
-    Shared by /api/solve and /api/narrate: both are handed data by a browser,
-    and both run every guard on it. Nothing here trusts where it came from.
+    Used by /api/solve, which is handed data by a browser and runs every
+    guard on it. Nothing here trusts where it came from.
     """
     try:
         puzzle = Puzzle(request.categories, request.num_positions)

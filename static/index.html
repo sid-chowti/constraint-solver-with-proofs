@@ -334,8 +334,9 @@ function renderGrid(grid, step) {
 function renderCard(step) {
   const kindClass = step.kind === 'conclude' ? 'concluded'
                   : step.kind === 'contradiction' ? 'broke' : '';
-  /* Prose exists only for top-level steps, and only once somebody has paid for
-     it (or, for the bundled puzzle, it was written once and stored). */
+  /* Wording exists only for the bundled puzzles, where it was written once and
+     checked in, and only for top-level steps. A puzzle you type shows the
+     solver's own wording, which already names the clue and what it leaned on. */
   const written = viewer.prose && !viewer.path.length ? viewer.prose[step.id] : null;
 
   let html = '';
@@ -431,25 +432,7 @@ function drawViewer() {
   html += '</div>';
 
   const mount = $('viewer');
-  mount.innerHTML = html + narrateButton();
-
-  const write = $('narrate');
-  if (write) write.onclick = ev => {
-    if (!$('key').value.trim()) {
-      say('Writing the explanation needs your API key — open "Or type your own '
-          + 'puzzle" at the top and paste it in.', true);
-      return;
-    }
-    call('/api/narrate', post({...solvedPayload, api_key: $('key').value}),
-         ev.currentTarget, 'Writing the explanation… this takes a few seconds.',
-         body => {
-           viewer.prose = body.prose;
-           drawViewer();
-           /* Put the reader back on the step they were reading, now in words. */
-           $('viewer').scrollIntoView({block: 'start'});
-         },
-         true);   // keep the answer on screen while it is written
-  };
+  mount.innerHTML = html;
 
   const prev = $('step-prev'), next = $('step-next'), out = $('step-out');
   const why = $('why-toggle');
@@ -515,9 +498,6 @@ document.addEventListener('keydown', e => {
    translate call to the solve call. */
 let translated = null;
 let heading = null;
-/* The exact puzzle last sent to /api/solve. Narrating re-solves it server-side
-   rather than trusting a trace sent up from here. */
-let solvedPayload = null;
 let positionNoun = 'position';
 
 /* "House" -> "House 3"; used for the answer table and the grid headings. */
@@ -589,15 +569,6 @@ function refreshCount() {
 function render(data, info) {
   const out = $('out');
   info = info || data.info || {name: 'Your puzzle'};
-
-  /* Everything needed to ask for an explanation later is in this reply, so a
-     bundled puzzle can be narrated too - no re-translation, no second guess at
-     what was solved. */
-  if (data.values && data.clues) {
-    solvedPayload = {num_positions: data.num_positions,
-                     categories: data.values,
-                     clues: data.clues.map(c => c.clue)};
-  }
 
   let html = '';
 
@@ -716,22 +687,12 @@ $('run-mine').onclick = e =>
    again because the server remembered none of it. */
 $('run-confirmed').onclick = e => {
   const on = new Set(checkboxes().filter(b => b.checked).map(b => Number(b.dataset.number)));
-  solvedPayload = {
+  call('/api/solve', post({
     num_positions: translated.num_positions,
     categories: translated.categories,
     clues: translated.clues.filter(c => on.has(c.number)).map(c => c.clue),
-  };
-  call('/api/solve', post(solvedPayload), e.target, 'Solving…', body => render(body, heading));
+  }), e.target, 'Solving…', body => render(body, heading));
 };
-
-/* Writing the explanation is a separate, opt-in call: the answer and the proof
-   are already complete without it, and it spends the visitor's money. */
-function narrateButton() {
-  if (!viewer || viewer.prose || !solvedPayload) return '';
-  return '<div class="whytoggle"><button id="narrate" class="ghost">'
-       + 'Explain these steps in plain English</button>'
-       + '<span class="note" style="margin-left:10px">one more API call, on your key</span></div>';
-}
 
 $('back-to-text').onclick = () => {
   $('confirm').classList.add('hidden');
