@@ -50,7 +50,7 @@ from examples import load
 from parsing import UnreadableClues, clue_to_json, clues_from_json
 from puzzle import Puzzle
 from solve import solve
-from translate import TranslationFailed, anthropic_asker, translate
+from translate import TranslationFailed, anthropic_asker, translate, warnings_for
 
 app = FastAPI(title="Logic Puzzle Solver")
 
@@ -114,6 +114,10 @@ def translate_puzzle(request: TranslateRequest):
         "num_positions": puzzle.num_positions,
         "categories": puzzle.categories,
         "clues": _clue_rows(clues),
+        # Things odd enough to mention but not to refuse over. They belong on
+        # the confirmation screen, where a person can judge them - which is the
+        # whole reason that screen exists.
+        "warnings": warnings_for(puzzle),
     }
 
 

@@ -21,18 +21,40 @@ English -> AI -> JSON -> parser -> validator -> YOU -> SOLVER -> trace -> page
 
 ## What it guarantees
 
-Three independent guards, each catching what the others cannot:
+Independent guards, each catching what the others cannot:
 
 | guard | catches |
 |---|---|
 | `parsing.clues_from_json` | data that is not a clue at all — bad type, bad operator, missing field |
 | `constraints.validate_constraints` | a clue naming a category, value, or position this puzzle does not have |
+| `grounding.find_ungrounded` | a value the user never wrote — an invented "unicorn" among the pets |
 | `verify.verify` | a finished answer that breaks one of its own clues |
 | `verify.verify_trace` | an explanation that does not match what the solver actually did |
 
-The first two objections are fed back to the AI for a retry — they mean the
+The first three objections are fed back to the AI for a retry — they mean the
 translation was wrong, not that the puzzle is impossible. The last two can only
 mean a bug in this code, so they raise.
+
+Note what the first two have in common: they check the AI against **itself**.
+An invented value is perfectly consistent with the rest of an invented puzzle,
+so neither notices it. Grounding is the only guard that compares the AI's
+output to what the user actually typed.
+
+It is deliberately permissive, because a false alarm blocks somebody whose
+puzzle was fine while a miss still reaches the confirmation screen where a
+person sees every value. Getting the real Einstein puzzle to pass needs all
+three of these:
+
+| value | the text says | why a naive check fails |
+|---|---|---|
+| `English` | "the **English**man lives…" | the value is only part of a word |
+| `OldGold` | "the **Old Gold** smoker…" | the AI dropped the space |
+| `Kools` | "**Kool** is smoked…" | a plural twin |
+
+One thing is a warning rather than a refusal: the same value appearing in two
+categories. It is usually the AI confusing itself, but it can be legitimate, so
+it is shown on the confirmation screen and never retried — retrying a puzzle
+that was fine would just loop until it gave up.
 
 ## The one check no code can do
 
@@ -148,7 +170,7 @@ dropped, never stored and never logged.
 .venv/bin/pytest -q
 ```
 
-236 tests. The translator's retry paths and the whole confirm-then-solve flow
+250 tests. The translator's retry paths and the whole confirm-then-solve flow
 are covered with canned replies, so everything runs without an API key.
 
 ## Layout
@@ -162,6 +184,7 @@ constraints.py  the clue types, and the guard on what they may name
 verify.py       independent checks on the answer and on the explanation
 solve.py        propagation, shaving, and the public solve() front door
 parsing.py      untrusted data -> real clues, or a clear list of complaints
+grounding.py    did the user actually write this value, or did the AI invent it
 translate.py    English -> clues, with the guards as the judge
 app.py          the web layer
 ```

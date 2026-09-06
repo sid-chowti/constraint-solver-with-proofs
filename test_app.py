@@ -140,6 +140,37 @@ def test_an_api_failure_is_reported_cleanly(monkeypatch):
     assert "invalid x-api-key" in response.json()["detail"]
 
 
+# Warnings ride down with the translation, so the person checking the reading
+# sees them at the moment they can actually judge them.
+def test_translate_carries_warnings(monkeypatch):
+    _fake_translation(monkeypatch)
+
+    body = client.post("/api/translate", json={"text": "x", "api_key": "k"}).json()
+
+    assert body["warnings"] == []   # the Einstein puzzle has nothing odd in it
+
+
+def test_a_value_in_two_categories_is_warned_about(monkeypatch):
+    import app as app_module
+    from parsing import clues_from_json
+    from puzzle import Puzzle
+
+    # "green" is both a colour and a pet — legal, but almost always confusion.
+    puzzle = Puzzle({"color": ["red", "green"], "pet": ["cat", "green"]}, 2)
+    clues = clues_from_json([{"type": "AbsolutePosition",
+                              "category_value": ["color", "red"],
+                              "operator": "==", "position": 1}])
+    monkeypatch.setattr(app_module, "anthropic_asker", lambda key: None)
+    monkeypatch.setattr(app_module, "translate", lambda text, ask, **kw: (puzzle, clues))
+
+    body = client.post("/api/translate", json={"text": "x", "api_key": "k"}).json()
+
+    assert len(body["warnings"]) == 1
+    assert "green" in body["warnings"][0]
+    # A warning must not block: the clues still came through.
+    assert len(body["clues"]) == 1
+
+
 # ---------------------------------------------------------------------------
 # /api/solve - the confirmed clues come back up and get solved
 # ---------------------------------------------------------------------------

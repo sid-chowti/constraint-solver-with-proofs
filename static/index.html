@@ -63,6 +63,9 @@
   .orig { margin: 0; font-size: 15px; }
   .said { margin: 2px 0 0; font-size: 14px; color: var(--soft); }
   .said.mirror { color: var(--accent); }
+  .warn { margin: 0 0 12px; padding: 10px 12px; border-radius: 8px;
+          background: var(--accent-soft); color: var(--accent);
+          font-size: 13.5px; font-weight: 600; }
 
   /* The step-through viewer: one step at a time, on a grid you can follow. */
   .nav { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
@@ -465,6 +468,14 @@ let heading = null;
 
 /* --- the confirmation screen ------------------------------------------- */
 
+/* Things worth a second look but not worth refusing over — currently just a
+   value that turned up in two categories at once. Shown, never enforced: it
+   can be legitimate, and only the person who wrote the puzzle can tell. */
+function renderWarnings(body) {
+  if (!body.warnings || !body.warnings.length) return '';
+  return '<p class="warn">' + body.warnings.map(esc).join('<br>') + '</p>';
+}
+
 /* The categories and house count the AI decided on. Worth showing: the AI
    invents this half too, so a made-up category is a misreading like any other. */
 function renderShape(body) {
@@ -494,7 +505,7 @@ function renderClueCheck(c) {
 function showConfirm(body) {
   translated = body;
   heading = body.info;
-  $('confirm-shape').innerHTML = renderShape(body);
+  $('confirm-shape').innerHTML = renderWarnings(body) + renderShape(body);
   $('confirm-clues').innerHTML = body.clues.map(renderClueCheck).join('');
   $('confirm').classList.remove('hidden');
   $('out').classList.add('hidden');

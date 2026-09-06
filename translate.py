@@ -22,6 +22,7 @@ import json
 import re
 
 from constraints import InvalidConstraint, validate_constraints
+from grounding import complaints as grounding_complaints
 from parsing import UnreadableClues, clues_from_json
 from puzzle import Puzzle
 
@@ -119,7 +120,7 @@ def translate(text, ask, max_attempts=MAX_ATTEMPTS):
 
     for _ in range(max_attempts):
         reply = ask(conversation)
-        puzzle, clues, complaints = _read_reply(reply)
+        puzzle, clues, complaints = _read_reply(reply, text)
 
         if not complaints:
             return puzzle, clues
@@ -136,11 +137,13 @@ def translate(text, ask, max_attempts=MAX_ATTEMPTS):
     raise TranslationFailed(attempts)
 
 
-def _read_reply(reply):
+def _read_reply(reply, text=""):
     """Turn one model reply into (puzzle, clues, complaints).
 
     Complaints being empty is the only success. Everything else hands back a
     list of plain sentences for the AI to act on.
+
+    `text` is the user's original puzzle, needed only by the grounding guard.
     """
     data = _extract_json(reply)
     if data is None:
@@ -163,7 +166,35 @@ def _read_reply(reply):
     except InvalidConstraint as wrong:
         return None, None, [str(wrong)]
 
+    # Both guards above check the AI against ITSELF, and an invented value is
+    # perfectly consistent with the rest of an invented puzzle. This one checks
+    # it against the user: every value should be traceable to their own words.
+    invented = grounding_complaints(puzzle.categories, text)
+    if invented:
+        return None, None, invented
+
     return puzzle, clues, []
+
+
+# The same value in two categories. Almost always the AI confusing itself, but
+# it CAN be legitimate ("Green" as both a colour and a surname), so this is a
+# warning shown on the confirmation screen and never a reason to retry -
+# retrying on a legitimate puzzle would loop until it gave up.
+def duplicate_values(categories):
+    seen = {}
+    for name, values in categories.items():
+        for value in values:
+            seen.setdefault(value, []).append(name)
+    return {value: names for value, names in seen.items() if len(names) > 1}
+
+
+def warnings_for(puzzle):
+    """Things worth a person's attention that are not worth refusing over."""
+    return [
+        f"'{value}' is a value in more than one category ({', '.join(names)}) "
+        f"- check that is really what your puzzle means"
+        for value, names in sorted(duplicate_values(puzzle.categories).items())
+    ]
 
 
 def _read_puzzle(data):
