@@ -655,6 +655,17 @@ function post(payload) {
           body: JSON.stringify(payload)};
 }
 
+/* Fill in the button whose puzzle is on screen, and hollow out the rest.
+   The solid one means "this is what you are looking at", so it has to follow
+   the answer - it was previously just the first button, styled once and never
+   updated, which reads as a selection that is stuck. Pass null when the answer
+   came from a puzzle the visitor typed, because then no example is showing. */
+function showingExample(name) {
+  document.querySelectorAll('#examples [data-example]').forEach(button => {
+    button.classList.toggle('ghost', button.dataset.example !== name);
+  });
+}
+
 /* The bundled puzzles, offered as buttons. They skip the confirmation screen:
    a person already checked them, so there is no AI reading to second-guess. */
 async function loadExamples() {
@@ -662,8 +673,8 @@ async function loadExamples() {
   try {
     const res = await fetch('/api/examples');
     const {examples} = await res.json();
-    row.innerHTML = examples.map((puzzle, i) =>
-      `<button data-example="${esc(puzzle.name)}"${i ? ' class="ghost"' : ''}>`
+    row.innerHTML = examples.map(puzzle =>
+      `<button class="ghost" data-example="${esc(puzzle.name)}">`
       + `${esc(puzzle.title)} <span class="tiny">`
       + `${puzzle.positions} slots &middot; ${puzzle.clues} clues</span></button>`).join('');
 
@@ -672,9 +683,11 @@ async function loadExamples() {
         call('/api/example?name=' + encodeURIComponent(button.dataset.example),
              {}, button, 'Solving…', body => {
                $('confirm').classList.add('hidden');
+               showingExample(button.dataset.example);
                render(body);
              });
     });
+    showingExample(examples.length ? examples[0].name : null);
   } catch (e) {
     row.innerHTML = '<span class="note err">Could not load the bundled puzzles.</span>';
   }
@@ -694,7 +707,10 @@ $('run-confirmed').onclick = e => {
     num_positions: translated.num_positions,
     categories: translated.categories,
     clues: translated.clues.filter(c => on.has(c.number)).map(c => c.clue),
-  }), e.target, 'Solving…', body => render(body, heading));
+  }), e.target, 'Solving…', body => {
+    showingExample(null);
+    render(body, heading);
+  });
 };
 
 $('back-to-text').onclick = () => {
