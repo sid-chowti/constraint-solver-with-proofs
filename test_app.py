@@ -333,3 +333,95 @@ def test_the_confirmation_screen_is_on_the_page():
     for piece in ('id="confirm"', 'id="confirm-clues"', 'id="run-confirmed"',
                   'id="back-to-text"', "Check what it understood"):
         assert piece in page, f"missing {piece}"
+
+
+# ---------------------------------------------------------------------------
+# /api/narrate — the wording layer, opt-in and separately paid for
+# ---------------------------------------------------------------------------
+
+
+# The bundled puzzle ships already written, which is what keeps the demo free.
+def test_the_example_comes_with_its_wording():
+    body = client.get("/api/example").json()
+
+    assert body["prose"], "the bundled puzzle should ship narrated"
+    assert len(body["prose"]) == len(body["trace"])
+    assert set(body["prose"]) == {str(g["id"]) for g in body["trace"]}
+
+
+def _solvable():
+    from examples import load
+
+    _, puzzle, clues = load()
+    from parsing import clue_to_json
+    return {"num_positions": puzzle.num_positions,
+            "categories": puzzle.categories,
+            "clues": [clue_to_json(c) for c in clues]}
+
+
+def test_narrating_without_a_key_is_refused():
+    response = client.post("/api/narrate", json={**_solvable(), "api_key": "  "})
+
+    assert response.status_code == 400
+    assert "API key" in response.json()["detail"]
+
+
+def test_narrating_returns_a_sentence_for_every_step(monkeypatch):
+    import json
+
+    import app as app_module
+
+    def fake_asker(key):
+        def ask(conversation):
+            # Echo back one sentence per id the request actually asked about.
+            asked = json.loads(conversation[0]["content"].split("\n\n", 1)[1])
+            return json.dumps({str(s["id"]): f"Step {s['id']} in words." for s in asked})
+        return ask
+
+    monkeypatch.setattr(app_module, "narrating_asker", fake_asker)
+
+    body = client.post("/api/narrate", json={**_solvable(), "api_key": "k"}).json()
+
+    assert len(body["prose"]) == 74
+    assert body["prose"]["1"] == "Step 1 in words."
+
+
+# Half-narrated is worse than not narrated, so a reply that does not line up is
+# thrown away whole and reported.
+def test_wording_that_does_not_line_up_is_thrown_away(monkeypatch):
+    import app as app_module
+
+    monkeypatch.setattr(app_module, "narrating_asker",
+                        lambda key: (lambda conversation: '{"1": "only this one"}'))
+
+    response = client.post("/api/narrate", json={**_solvable(), "api_key": "k"})
+
+    assert response.status_code == 422
+    assert "thrown away" in response.json()["detail"]["message"]
+    assert response.json()["detail"]["problems"]
+
+
+def test_a_writing_api_failure_is_reported_cleanly(monkeypatch):
+    import app as app_module
+
+    def explodes(key):
+        raise RuntimeError("invalid x-api-key")
+
+    monkeypatch.setattr(app_module, "narrating_asker", explodes)
+
+    response = client.post("/api/narrate", json={**_solvable(), "api_key": "bad"})
+
+    assert response.status_code == 502
+    assert "invalid x-api-key" in response.json()["detail"]
+
+
+# Narrating runs the same guards as solving: it is handed data by a browser.
+def test_narrating_forged_clues_is_refused():
+    response = client.post("/api/narrate", json={
+        "num_positions": 2,
+        "categories": {"color": ["red", "blue"]},
+        "clues": [{"type": "Bogus"}],
+        "api_key": "k",
+    })
+
+    assert response.status_code == 400

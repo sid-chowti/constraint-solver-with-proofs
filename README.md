@@ -11,13 +11,17 @@ chain multi-step constraint logic, and a wrong answer that sounds confident is
 worse than no answer.
 
 ```
-English -> AI -> JSON -> parser -> validator -> YOU -> SOLVER -> trace -> page
-           |              |          |           |       |
-      language       "is this    "does the   "is this  all the reasoning,
-        only          a clue?"    puzzle      really    and a proof of
-                                  have        my        every step
-                                  these?"     puzzle?"
+English -> AI -> JSON -> guards -> YOU -> SOLVER -> trace -> AI -> page
+           |               |        |        |                |
+       language        "is this  "is this  all the        wording only,
+         only          a clue,   really     reasoning,    on a finished
+                       and real  my         and a proof   proof it may
+                       words?"   puzzle?"   of it         not change
 ```
+
+The AI appears twice and reasons neither time. It reads the English at the
+front; it writes the English at the back. Everything between is a plain
+algorithm and a person.
 
 ## What it guarantees
 
@@ -148,6 +152,41 @@ inside an assumption as though they were real. So you step *into* one: the grid
 switches to that pretend world, says plainly that nothing on it is known to be
 true, runs to its contradiction, and you back out.
 
+## Putting the proof into words
+
+The solver's own wording is exact and mechanical - *"the smoke at position 3 is
+not Kools"*. A second, tightly fenced AI pass turns each step into a sentence:
+
+> Kools are smoked in the yellow house, and house 3 can't be yellow, so house 3
+> doesn't smoke Kools.
+
+Handing an AI the explanation sounds like the one thing this project refuses to
+do. Three things make it safe:
+
+- **It cannot change the proof.** Every step carries an id, and the reply must
+  use each id exactly once. A dropped step, an invented step, or two steps
+  quietly merged all change which ids come back, and all get rejected. The
+  wording cannot be checked; the structure can.
+- **The checked fact stays on screen** underneath the sentence. Prose sits on
+  top of the proof, never in place of it.
+- **All or nothing.** If the reply does not line up, none of it is used - a
+  half-narrated proof is worse than a bare one, because nothing marks the gaps.
+
+One subtlety worth knowing, because getting it wrong produces confident
+nonsense. A clue like *"the Norwegian lives next to the blue house"* is an
+`Or`, and its eliminations are recorded against the whole clue even when the
+real work happened inside the branches - so one step rules out **water** while
+citing a clue about nationalities and colours. A writer that could not see this
+would cheerfully explain that the clue says something it does not, so each step
+is told how many cases had to be checked, and told to say "whichever way this
+clue falls, ..." rather than putting words in the clue's mouth.
+
+The bundled puzzle ships with its 74 sentences already written and checked in,
+so the demo reads as English with **no API key and no cost**. A test re-runs the
+same structural check against the live trace, so the stored wording cannot
+quietly drift out of step with the solver. For your own puzzle it is a separate,
+opt-in button - the answer and the proof are complete without it.
+
 ## Running it
 
 ```bash
@@ -170,7 +209,7 @@ dropped, never stored and never logged.
 .venv/bin/pytest -q
 ```
 
-250 tests. The translator's retry paths and the whole confirm-then-solve flow
+270 tests. The translator's retry paths and the whole confirm-then-solve flow
 are covered with canned replies, so everything runs without an API key.
 
 ## Layout
@@ -185,6 +224,7 @@ verify.py       independent checks on the answer and on the explanation
 solve.py        propagation, shaving, and the public solve() front door
 parsing.py      untrusted data -> real clues, or a clear list of complaints
 grounding.py    did the user actually write this value, or did the AI invent it
+narrate.py      the finished proof -> English, with the ids as the check
 translate.py    English -> clues, with the guards as the judge
 app.py          the web layer
 ```

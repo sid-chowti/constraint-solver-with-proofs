@@ -27,3 +27,19 @@ def load(name="einstein"):
 
     info = {"name": data["name"], "text": data["text"], "question": data["question"]}
     return info, puzzle, clues
+
+
+def load_prose(name="einstein"):
+    """The stored plain-English wording for a bundled puzzle, keyed by step id,
+    or None if this example has none.
+
+    Written once and checked in, so the demo reads like English without an API
+    key and without costing anyone anything. narrate.problems_with is what
+    guarantees it still lines up with the trace - see test_examples.
+    """
+    path = EXAMPLES / f"{name}_prose.json"
+    if not path.exists():
+        return None
+
+    stored = json.loads(path.read_text(encoding="utf-8"))["prose"]
+    return {int(step): sentence for step, sentence in stored.items()}

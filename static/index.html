@@ -80,6 +80,10 @@
   .branches { flex-direction: column; align-items: flex-start; }
   .branches button { font-size: 13px; padding: 6px 11px; text-align: left; }
   .whytoggle { margin-top: 12px; }
+  /* The written sentence leads; the machine-checked fact stays under it,
+     because the prose is the only part nothing can verify. */
+  .prose { margin: 0 0 4px; font-size: 16px; }
+  .checked { margin: 0; font-size: 12.5px; color: var(--soft); font-family: var(--mono); }
 
   .gridwrap { overflow-x: auto; margin-top: 14px; }
   table.pgrid { border-collapse: collapse; font-size: 12.5px; width: 100%; }
@@ -181,7 +185,7 @@
 
   <footer>
     The AI never solves anything. It turns sentences into structured clues, which are
-    checked by three separate guards before the solver sees them. Every step below is
+    checked by three separate guards before the solver sees them and confirmed by you. Every step below is
     a proof you can follow &mdash; nothing rests on a guess.
   </footer>
 </div>
@@ -315,10 +319,22 @@ function renderGrid(grid, step) {
 function renderCard(step) {
   const kindClass = step.kind === 'conclude' ? 'concluded'
                   : step.kind === 'contradiction' ? 'broke' : '';
-  let html = `<p class="fact ${kindClass}">${esc(step.says[0])}</p>`;
-  if (step.says.length > 1) {
-    html += `<p class="more">&hellip; and ${step.says.length - 1} more the same way: `
-          + step.says.slice(1).map(esc).join('; ') + '</p>';
+  /* Prose exists only for top-level steps, and only once somebody has paid for
+     it (or, for the bundled puzzle, it was written once and stored). */
+  const written = viewer.prose && !viewer.path.length ? viewer.prose[step.id] : null;
+
+  let html = '';
+  if (written) {
+    html += `<p class="prose ${kindClass}">${esc(written)}</p>`;
+    /* The checked facts stay on screen underneath. The wording is the one part
+       of this page nothing can verify, so it never replaces the proof. */
+    html += `<p class="checked">${step.says.map(esc).join(' &middot; ')}</p>`;
+  } else {
+    html += `<p class="fact ${kindClass}">${esc(step.says[0])}</p>`;
+    if (step.says.length > 1) {
+      html += `<p class="more">&hellip; and ${step.says.length - 1} more the same way: `
+            + step.says.slice(1).map(esc).join('; ') + '</p>';
+    }
   }
 
   const bits = [];
@@ -400,7 +416,15 @@ function drawViewer() {
   html += '</div>';
 
   const mount = $('viewer');
-  mount.innerHTML = html;
+  mount.innerHTML = html + narrateButton();
+
+  const write = $('narrate');
+  if (write) write.onclick = ev => call('/api/narrate',
+    post({...solvedPayload, api_key: $('key').value}),
+    ev.target, 'Writing the explanation…', body => {
+      viewer.prose = body.prose;
+      drawViewer();
+    });
 
   const prev = $('step-prev'), next = $('step-next'), out = $('step-out');
   const why = $('why-toggle');
@@ -443,6 +467,7 @@ function startViewer(data) {
     values: data.values,
     positions: Array.from({length: data.num_positions}, (_, i) => i + 1),
     groups: data.trace,
+    prose: data.prose || null,
     path: [],
     index: 1,
     showWhy: false,
@@ -465,6 +490,9 @@ document.addEventListener('keydown', e => {
    translate call to the solve call. */
 let translated = null;
 let heading = null;
+/* The exact puzzle last sent to /api/solve. Narrating re-solves it server-side
+   rather than trusting a trace sent up from here. */
+let solvedPayload = null;
 
 /* --- the confirmation screen ------------------------------------------- */
 
@@ -620,12 +648,22 @@ $('run-mine').onclick = e =>
    again because the server remembered none of it. */
 $('run-confirmed').onclick = e => {
   const on = new Set(checkboxes().filter(b => b.checked).map(b => Number(b.dataset.number)));
-  call('/api/solve', post({
+  solvedPayload = {
     num_positions: translated.num_positions,
     categories: translated.categories,
     clues: translated.clues.filter(c => on.has(c.number)).map(c => c.clue),
-  }), e.target, 'Solving…', body => render(body, heading));
+  };
+  call('/api/solve', post(solvedPayload), e.target, 'Solving…', body => render(body, heading));
 };
+
+/* Writing the explanation is a separate, opt-in call: the answer and the proof
+   are already complete without it, and it spends the visitor's money. */
+function narrateButton() {
+  if (!viewer || viewer.prose || !solvedPayload) return '';
+  return '<div class="whytoggle"><button id="narrate" class="ghost">'
+       + 'Explain these steps in plain English</button>'
+       + '<span class="note" style="margin-left:10px">one more API call, on your key</span></div>';
+}
 
 $('back-to-text').onclick = () => {
   $('confirm').classList.add('hidden');

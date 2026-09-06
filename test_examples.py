@@ -55,3 +55,45 @@ def test_the_example_produces_a_full_explanation():
     assert len(result.trace) > 50
     assert any(step.children for group in result.trace for step in group.steps)
     assert any(group.kind is StepKind.CONCLUDE for group in result.trace)
+
+
+# ---------------------------------------------------------------------------
+# The stored wording for the bundled puzzle
+# ---------------------------------------------------------------------------
+
+
+# THE important one. The prose is written once and checked in, so any change to
+# the solver, the grouping, or the trace can silently leave it describing steps
+# that no longer exist - and a proof narrated with the wrong sentences is worse
+# than one with none. This is the same structural check the AI's own replies
+# have to pass.
+def test_the_stored_prose_still_matches_the_trace():
+    from deduction import to_ai_payload
+    from examples import load, load_prose
+    from narrate import for_writing, problems_with
+    from solve import solve
+
+    _, puzzle, clues = load()
+    groups = for_writing(to_ai_payload(solve(puzzle, clues).trace, clues))
+    prose = load_prose()
+
+    assert prose is not None
+    assert problems_with({str(k): v for k, v in prose.items()}, groups) == []
+
+
+def test_every_stored_sentence_is_real_english():
+    """Cheap sanity: the stored file is hand-written, so a truncated or
+    placeholder entry would otherwise sit there unnoticed."""
+    from examples import load_prose
+
+    for step, sentence in load_prose().items():
+        assert len(sentence) > 20, f"step {step} has a stub sentence"
+        # A sentence may legitimately open with a quoted clue.
+        assert sentence.lstrip('"“').lstrip()[0].isupper(), f"step {step} does not start a sentence"
+        assert sentence.rstrip()[-1] in ".!?", f"step {step} is unfinished"
+
+
+def test_a_puzzle_with_no_stored_prose_says_so():
+    from examples import load_prose
+
+    assert load_prose("nothing_is_stored_here") is None

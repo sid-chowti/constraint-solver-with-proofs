@@ -46,9 +46,11 @@ from pydantic import BaseModel
 
 from constraints import InvalidConstraint
 from deduction import to_ai_payload
-from examples import load
+from examples import load, load_prose
 from parsing import UnreadableClues, clue_to_json, clues_from_json
 from puzzle import Puzzle
+from narrate import NarrationFailed, narrate
+from narrate import anthropic_asker as narrating_asker
 from solve import solve
 from translate import TranslationFailed, anthropic_asker, translate, warnings_for
 
@@ -86,7 +88,8 @@ def example():
     """The bundled puzzle, solved in one step. The no-key path, and the one
     that proves the solver works with no AI involved at all."""
     info, puzzle, clues = load()
-    return {"info": info, **_solved(puzzle, clues)}
+    # The wording was written once and checked in, so this path stays free.
+    return {"info": info, "prose": load_prose(), **_solved(puzzle, clues)}
 
 
 @app.post("/api/translate")
@@ -128,18 +131,7 @@ def solve_puzzle(request: SolveRequest):
     Every failure below means the data was wrong, not that the puzzle is
     impossible — so they are 400s the page can explain, never 500s.
     """
-    try:
-        puzzle = Puzzle(request.categories, request.num_positions)
-    except (ValueError, TypeError, AttributeError) as bad:
-        raise HTTPException(400, f"That is not a usable puzzle: {bad}")
-
-    try:
-        clues = clues_from_json(request.clues)
-    except UnreadableClues as unreadable:
-        raise HTTPException(400, {
-            "message": "Those clues could not be read.",
-            "problems": [f"{p.where}: {p.problem}" for p in unreadable.problems],
-        })
+    puzzle, clues = _puzzle_and_clues(request)
 
     try:
         return _solved(puzzle, clues)
@@ -150,6 +142,44 @@ def solve_puzzle(request: SolveRequest):
             "message": "A clue named something this puzzle does not have.",
             "problems": [str(invalid)],
         })
+
+
+class NarrateRequest(SolveRequest):
+    """A solve request, plus the key to pay for the wording."""
+
+    api_key: str
+
+
+@app.post("/api/narrate")
+def narrate_puzzle(request: NarrateRequest):
+    """Put an already-solved proof into plain English.
+
+    Opt-in and separate from solving, because it costs the visitor money and
+    the answer is already complete without it. The puzzle is re-solved here
+    rather than having the browser send its trace back up: solving takes
+    milliseconds, and the prose must describe the proof this code actually
+    produced, not a version that came back from somewhere else.
+    """
+    if not request.api_key.strip():
+        raise HTTPException(400, "An API key is needed to write the explanation.")
+
+    puzzle, clues = _puzzle_and_clues(request)
+    result = solve(puzzle, clues)
+    groups = to_ai_payload(result.trace or [], clues)
+
+    try:
+        prose = narrate(groups, narrating_asker(request.api_key.strip()))
+    except NarrationFailed as failed:
+        # The wording could not be trusted, so none of it is used - a half
+        # narrated proof is worse than none, because nothing marks the gaps.
+        raise HTTPException(422, {
+            "message": "The explanation did not line up with the proof, so it was thrown away.",
+            "problems": failed.attempts[-1] if failed.attempts else [],
+        })
+    except Exception as broken:  # noqa: BLE001 - the API call can fail many ways
+        raise HTTPException(502, f"The writing service failed: {broken}")
+
+    return {"prose": prose}
 
 
 def _clue_rows(clues):
@@ -168,6 +198,26 @@ def _clue_rows(clues):
          "clue": clue_to_json(clue)}
         for number, clue in enumerate(clues, 1)
     ]
+
+
+def _puzzle_and_clues(request):
+    """Untrusted JSON -> a real Puzzle and real clues, or a 400 saying why.
+
+    Shared by /api/solve and /api/narrate: both are handed data by a browser,
+    and both run every guard on it. Nothing here trusts where it came from.
+    """
+    try:
+        puzzle = Puzzle(request.categories, request.num_positions)
+    except (ValueError, TypeError, AttributeError) as bad:
+        raise HTTPException(400, f"That is not a usable puzzle: {bad}")
+
+    try:
+        return puzzle, clues_from_json(request.clues)
+    except UnreadableClues as unreadable:
+        raise HTTPException(400, {
+            "message": "Those clues could not be read.",
+            "problems": [f"{p.where}: {p.problem}" for p in unreadable.problems],
+        })
 
 
 def _solved(puzzle, clues):
