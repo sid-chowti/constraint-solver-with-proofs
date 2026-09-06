@@ -197,10 +197,24 @@ python -m venv .venv
 
 Then open http://127.0.0.1:8000.
 
-The bundled Einstein puzzle ships already translated, so it solves with **no API
-key and no cost**. A key is only needed to translate a new puzzle from English,
-and the site asks the visitor for their own — it is used for one request and then
-dropped, never stored and never logged.
+Three puzzles ship already translated, so they solve with **no API key and no
+cost**:
+
+| puzzle | size | clues | steps |
+|---|---|---|---|
+| The Einstein Puzzle | 5 houses, 5 categories | 14 | 74 |
+| The Four Desks | 4 desks, 4 categories | 11 | 53 |
+| The Five Food Trucks | 5 trucks, 4 categories | 13 | 74 |
+
+All three are **minimal** — remove any single clue and the puzzle stops having a
+unique answer — which is what makes every step of the walk-through worth
+reading. A test enforces that, along with: each one solves, each one's text
+actually names every value it expects you to place, and any stored wording still
+lines up with the live trace.
+
+A key is only needed to translate a *new* puzzle from English, and the site asks
+the visitor for their own — used for one request, then dropped, never stored and
+never logged.
 
 ## Tests
 
@@ -209,7 +223,7 @@ dropped, never stored and never logged.
 .venv/bin/pytest -q
 ```
 
-270 tests. The translator's retry paths and the whole confirm-then-solve flow
+287 tests. The translator's retry paths and the whole confirm-then-solve flow
 are covered with canned replies, so everything runs without an API key.
 
 ## Layout

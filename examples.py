@@ -16,6 +16,33 @@ from puzzle import Puzzle
 
 EXAMPLES = pathlib.Path(__file__).parent / "examples"
 
+# The order they are offered in: the famous one leads, then the gentle one,
+# then the rest. Anything not listed follows alphabetically.
+ORDER = ["einstein", "desks", "trucks"]
+
+
+def available():
+    """Every bundled puzzle, as small summaries for the page to offer.
+
+    Also the allow-list: the name arrives from a query string, so nothing may
+    reach the filesystem without appearing here first.
+    """
+    found = []
+    for path in EXAMPLES.glob("*.json"):
+        if path.stem.endswith("_prose"):
+            continue
+        data = json.loads(path.read_text(encoding="utf-8"))
+        found.append({"name": path.stem, "title": data["name"],
+                      "question": data["question"],
+                      "positions": data["num_positions"],
+                      "clues": len(data["clues"])})
+
+    def rank(example):
+        name = example["name"]
+        return (ORDER.index(name) if name in ORDER else len(ORDER), name)
+
+    return sorted(found, key=rank)
+
 
 def load(name="einstein"):
     """Read a bundled example. Returns (info, puzzle, clues), where `info`
@@ -25,7 +52,10 @@ def load(name="einstein"):
     puzzle = Puzzle(data["categories"], data["num_positions"])
     clues = clues_from_json(data["clues"])
 
-    info = {"name": data["name"], "text": data["text"], "question": data["question"]}
+    info = {"name": data["name"], "text": data["text"], "question": data["question"],
+            # What one position is called here: a house, a desk, a food truck.
+            # Calling a food truck a house is a small thing that reads as a bug.
+            "position_noun": data.get("position_noun", "position")}
     return info, puzzle, clues
 
 

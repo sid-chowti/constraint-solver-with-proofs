@@ -1,5 +1,5 @@
 from deduction import StepKind
-from examples import load
+from examples import EXAMPLES, load, load_prose
 from solve import Status, solve
 from verify import verify
 
@@ -97,3 +97,81 @@ def test_a_puzzle_with_no_stored_prose_says_so():
     from examples import load_prose
 
     assert load_prose("nothing_is_stored_here") is None
+
+
+# ---------------------------------------------------------------------------
+# Every bundled puzzle, not just the famous one
+# ---------------------------------------------------------------------------
+
+import pytest
+
+from examples import available
+
+NAMES = [example["name"] for example in available()]
+
+
+def test_there_is_more_than_one_puzzle_to_try():
+    """Most visitors will never have an API key, so the bundled puzzles are the
+    whole site for them."""
+    assert len(NAMES) >= 3
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_every_bundled_puzzle_solves(name):
+    from solve import Status, solve
+
+    _, puzzle, clues = load(name)
+    result = solve(puzzle, clues)
+
+    assert result.status is Status.SOLVED, f"{name} does not solve"
+    # SOLVED means the grid was fully forced and the answer re-verified, which
+    # for a sound solver means this is the ONLY answer - so a bundled puzzle
+    # can never be quietly ambiguous.
+    assert result.trace
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_every_bundled_puzzle_names_its_values_in_its_own_text(name):
+    """The same rule the grounding guard applies to the AI. A bundled puzzle
+    that fails it would be a puzzle whose text does not mention something the
+    reader is expected to place."""
+    import json
+
+    from grounding import find_ungrounded
+
+    data = json.loads((EXAMPLES / f"{name}.json").read_text(encoding="utf-8"))
+
+    assert find_ungrounded(data["categories"], data["text"]) == []
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_no_bundled_puzzle_has_a_clue_it_does_not_need(name):
+    """A minimal puzzle is a better demo: every clue in the list is doing work,
+    which is what makes the step-by-step worth reading."""
+    from solve import Status, solve
+
+    _, puzzle, clues = load(name)
+
+    for dropped in range(len(clues)):
+        fewer = clues[:dropped] + clues[dropped + 1:]
+        assert solve(puzzle, fewer).status is not Status.SOLVED, (
+            f"{name} still solves without clue {dropped + 1}")
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_stored_prose_where_present_still_matches_the_trace(name):
+    """Prose is written once and checked in, so it can silently drift when the
+    solver or the grouping changes. Any example that ships wording gets the
+    same structural check the AI's own replies must pass."""
+    from deduction import to_ai_payload
+    from narrate import for_writing, problems_with
+    from solve import solve
+
+    prose = load_prose(name)
+    if prose is None:
+        return  # this puzzle ships without wording, which is allowed
+
+    _, puzzle, clues = load(name)
+    groups = for_writing(to_ai_payload(solve(puzzle, clues).trace, clues))
+
+    assert problems_with({str(k): v for k, v in prose.items()}, groups) == []

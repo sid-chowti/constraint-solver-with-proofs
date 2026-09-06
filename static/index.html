@@ -80,6 +80,7 @@
   .branches { flex-direction: column; align-items: flex-start; }
   .branches button { font-size: 13px; padding: 6px 11px; text-align: left; }
   .whytoggle { margin-top: 12px; }
+  .tiny { font-weight: 400; opacity: 0.75; font-size: 12.5px; }
   /* The written sentence leads; the machine-checked fact stays under it,
      because the prose is the only part nothing can verify. */
   .prose { margin: 0 0 4px; font-size: 16px; }
@@ -139,10 +140,13 @@
   </header>
 
   <div class="panel">
-    <div class="row">
-      <button id="run-example">Solve the Einstein puzzle</button>
-      <span class="note" style="margin:0">No API key needed &mdash; it ships already translated.</span>
+    <div class="row" id="examples">
+      <span class="note" style="margin:0">Loading the bundled puzzles&hellip;</span>
     </div>
+    <p class="note" style="margin-top:10px">
+      No API key needed &mdash; these ship already translated, so the solver and its
+      working are free for everyone.
+    </p>
 
     <details class="byo">
       <summary>Or type your own puzzle</summary>
@@ -291,7 +295,7 @@ function renderGrid(grid, step) {
   }
 
   let html = '<table class="pgrid"><thead><tr><th></th>';
-  viewer.positions.forEach(p => html += `<th>House ${p}</th>`);
+  viewer.positions.forEach(p => html += `<th>${esc(capitalised(positionNoun))} ${p}</th>`);
   html += '</tr></thead><tbody>';
 
   for (const name of viewer.names) {
@@ -493,6 +497,10 @@ let heading = null;
 /* The exact puzzle last sent to /api/solve. Narrating re-solves it server-side
    rather than trusting a trace sent up from here. */
 let solvedPayload = null;
+let positionNoun = 'position';
+
+/* "House" -> "House 3"; used for the answer table and the grid headings. */
+const capitalised = word => word.charAt(0).toUpperCase() + word.slice(1);
 
 /* --- the confirmation screen ------------------------------------------- */
 
@@ -560,14 +568,29 @@ function refreshCount() {
 function render(data, info) {
   const out = $('out');
   info = info || data.info || {name: 'Your puzzle'};
+
+  /* Everything needed to ask for an explanation later is in this reply, so a
+     bundled puzzle can be narrated too - no re-translation, no second guess at
+     what was solved. */
+  if (data.values && data.clues) {
+    solvedPayload = {num_positions: data.num_positions,
+                     categories: data.values,
+                     clues: data.clues.map(c => c.clue)};
+  }
+
   let html = '';
+
+  /* A house, a desk, a food truck - whatever this puzzle lines up. Falls back
+     to the neutral word for a puzzle somebody typed themselves. */
+  positionNoun = (info && info.position_noun) || 'position';
 
   html += `<h2>${esc(info.name)}</h2>`;
   html += `<p><span class="status">${esc(data.status)}</span></p>`;
   if (data.reason) html += `<p class="note">${esc(data.reason)}</p>`;
 
   if (data.answer) {
-    html += '<h2>The answer</h2><div class="panel scroll"><table><thead><tr><th>House</th>';
+    html += `<h2>The answer</h2><div class="panel scroll"><table><thead><tr>`
+          + `<th>${esc(capitalised(positionNoun))}</th>`;
     data.categories.forEach(c => html += `<th>${esc(c)}</th>`);
     html += '</tr></thead><tbody>';
     data.answer.forEach(row => {
@@ -631,13 +654,31 @@ function post(payload) {
           body: JSON.stringify(payload)};
 }
 
-/* The bundled puzzle skips the confirmation screen: a person already checked
-   it, so there is no AI reading to second-guess. */
-$('run-example').onclick = e =>
-  call('/api/example', {}, e.target, 'Solving…', body => {
-    $('confirm').classList.add('hidden');
-    render(body);
-  });
+/* The bundled puzzles, offered as buttons. They skip the confirmation screen:
+   a person already checked them, so there is no AI reading to second-guess. */
+async function loadExamples() {
+  const row = $('examples');
+  try {
+    const res = await fetch('/api/examples');
+    const {examples} = await res.json();
+    row.innerHTML = examples.map((puzzle, i) =>
+      `<button data-example="${esc(puzzle.name)}"${i ? ' class="ghost"' : ''}>`
+      + `${esc(puzzle.title)} <span class="tiny">`
+      + `${puzzle.positions} slots &middot; ${puzzle.clues} clues</span></button>`).join('');
+
+    row.querySelectorAll('[data-example]').forEach(button => {
+      button.onclick = () =>
+        call('/api/example?name=' + encodeURIComponent(button.dataset.example),
+             {}, button, 'Solving…', body => {
+               $('confirm').classList.add('hidden');
+               render(body);
+             });
+    });
+  } catch (e) {
+    row.innerHTML = '<span class="note err">Could not load the bundled puzzles.</span>';
+  }
+}
+loadExamples();
 
 /* Your own puzzle stops at the confirmation screen — it does not solve. */
 $('run-mine').onclick = e =>

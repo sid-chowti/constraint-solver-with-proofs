@@ -425,3 +425,42 @@ def test_narrating_forged_clues_is_refused():
     })
 
     assert response.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Choosing between the bundled puzzles
+# ---------------------------------------------------------------------------
+
+
+def test_the_bundled_puzzles_are_listed():
+    body = client.get("/api/examples").json()
+
+    names = [example["name"] for example in body["examples"]]
+    assert "einstein" in names and len(names) >= 3
+    # The famous one leads, because it is the reason anyone is here.
+    assert names[0] == "einstein"
+    for example in body["examples"]:
+        assert example["title"] and example["question"]
+        assert example["positions"] >= 2 and example["clues"] >= 1
+
+
+def test_each_bundled_puzzle_can_be_solved_by_name():
+    for example in client.get("/api/examples").json()["examples"]:
+        body = client.get(f"/api/example?name={example['name']}").json()
+
+        assert body["status"] == "solved", example["name"]
+        assert len(body["answer"]) == example["positions"]
+        assert body["trace"]
+
+
+# The name arrives from a query string, so it must never reach the filesystem
+# unchecked - otherwise "../../something" would be a valid example name.
+def test_an_unknown_example_is_a_clean_404():
+    assert client.get("/api/example?name=nope").status_code == 404
+
+
+def test_an_example_name_cannot_escape_the_examples_folder():
+    for attack in ("../app", "../../etc/passwd", "einstein/../../app"):
+        response = client.get("/api/example", params={"name": attack})
+
+        assert response.status_code == 404, attack

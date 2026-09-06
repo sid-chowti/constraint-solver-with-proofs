@@ -46,7 +46,7 @@ from pydantic import BaseModel
 
 from constraints import InvalidConstraint
 from deduction import to_ai_payload
-from examples import load, load_prose
+from examples import available, load, load_prose
 from parsing import UnreadableClues, clue_to_json, clues_from_json
 from puzzle import Puzzle
 from narrate import NarrationFailed, narrate
@@ -83,13 +83,27 @@ def home():
     return FileResponse(STATIC / "index.html")
 
 
+@app.get("/api/examples")
+def examples():
+    """What is on offer without a key."""
+    return {"examples": available()}
+
+
 @app.get("/api/example")
-def example():
-    """The bundled puzzle, solved in one step. The no-key path, and the one
-    that proves the solver works with no AI involved at all."""
-    info, puzzle, clues = load()
-    # The wording was written once and checked in, so this path stays free.
-    return {"info": info, "prose": load_prose(), **_solved(puzzle, clues)}
+def example(name: str = "einstein"):
+    """One bundled puzzle, solved. The no-key path, and the one that proves the
+    solver works with no AI involved at all.
+
+    `name` arrives from a query string, so it is checked against the bundled
+    list rather than handed to the filesystem - otherwise "../../secrets" would
+    be a perfectly good example name.
+    """
+    if name not in {example["name"] for example in available()}:
+        raise HTTPException(404, f"There is no bundled puzzle called '{name}'.")
+
+    info, puzzle, clues = load(name)
+    # Where the wording was written once and checked in, this path stays free.
+    return {"info": info, "prose": load_prose(name), **_solved(puzzle, clues)}
 
 
 @app.post("/api/translate")

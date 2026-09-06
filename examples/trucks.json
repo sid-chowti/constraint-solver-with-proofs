@@ -1,0 +1,245 @@
+{
+  "name": "The Five Food Trucks",
+  "question": "Who sells the gyros, and which truck plays the blues?",
+  "position_noun": "truck",
+  "text": "Five food trucks — run by Nina, Omar, Priya, Quinn and Rosa — are parked in a row along one street, numbered 1 to 5 from the west end. Each truck is a different colour: red, orange, teal, purple or cream. Each sells a different dish — tacos, noodles, waffles, falafel or gyros — and each plays a different kind of music: jazz, rock, folk, blues or pop.\n\nQuinn is at one end of the street.\nNina is parked immediately to the right of Quinn.\nThe red truck plays folk.\nRosa sells tacos.\nOmar's truck is purple.\nThe falafel truck plays pop.\nPriya sells noodles.\nThe orange truck plays the blues.\nThe gyros truck is next to the taco truck.\nThe waffle truck is somewhere to the left of the falafel truck.\nThe orange truck is parked at the east end of the street.\nRosa's truck is cream.\nThe waffle truck plays rock.",
+  "num_positions": 5,
+  "categories": {
+    "vendor": [
+      "Nina",
+      "Omar",
+      "Priya",
+      "Quinn",
+      "Rosa"
+    ],
+    "food": [
+      "tacos",
+      "noodles",
+      "waffles",
+      "falafel",
+      "gyros"
+    ],
+    "color": [
+      "red",
+      "orange",
+      "teal",
+      "purple",
+      "cream"
+    ],
+    "music": [
+      "jazz",
+      "rock",
+      "folk",
+      "blues",
+      "pop"
+    ]
+  },
+  "clues": [
+    {
+      "type": "Or",
+      "source_text": "Quinn is at one end of the street.",
+      "constraints": [
+        {
+          "type": "AbsolutePosition",
+          "category_value": [
+            "vendor",
+            "Quinn"
+          ],
+          "operator": "==",
+          "position": 1
+        },
+        {
+          "type": "AbsolutePosition",
+          "category_value": [
+            "vendor",
+            "Quinn"
+          ],
+          "operator": "==",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "type": "RelativePosition",
+      "a": [
+        "vendor",
+        "Quinn"
+      ],
+      "b": [
+        "vendor",
+        "Nina"
+      ],
+      "operator": "==",
+      "offset": 1,
+      "source_text": "Nina is parked immediately to the right of Quinn."
+    },
+    {
+      "type": "RelativePosition",
+      "a": [
+        "color",
+        "red"
+      ],
+      "b": [
+        "music",
+        "folk"
+      ],
+      "operator": "==",
+      "offset": 0,
+      "source_text": "The red truck plays folk."
+    },
+    {
+      "type": "RelativePosition",
+      "a": [
+        "vendor",
+        "Rosa"
+      ],
+      "b": [
+        "food",
+        "tacos"
+      ],
+      "operator": "==",
+      "offset": 0,
+      "source_text": "Rosa sells tacos."
+    },
+    {
+      "type": "RelativePosition",
+      "a": [
+        "vendor",
+        "Omar"
+      ],
+      "b": [
+        "color",
+        "purple"
+      ],
+      "operator": "==",
+      "offset": 0,
+      "source_text": "Omar's truck is purple."
+    },
+    {
+      "type": "RelativePosition",
+      "a": [
+        "food",
+        "falafel"
+      ],
+      "b": [
+        "music",
+        "pop"
+      ],
+      "operator": "==",
+      "offset": 0,
+      "source_text": "The falafel truck plays pop."
+    },
+    {
+      "type": "RelativePosition",
+      "a": [
+        "vendor",
+        "Priya"
+      ],
+      "b": [
+        "food",
+        "noodles"
+      ],
+      "operator": "==",
+      "offset": 0,
+      "source_text": "Priya sells noodles."
+    },
+    {
+      "type": "RelativePosition",
+      "a": [
+        "color",
+        "orange"
+      ],
+      "b": [
+        "music",
+        "blues"
+      ],
+      "operator": "==",
+      "offset": 0,
+      "source_text": "The orange truck plays the blues."
+    },
+    {
+      "type": "Or",
+      "source_text": "The gyros truck is next to the taco truck.",
+      "constraints": [
+        {
+          "type": "RelativePosition",
+          "a": [
+            "food",
+            "gyros"
+          ],
+          "b": [
+            "food",
+            "tacos"
+          ],
+          "operator": "==",
+          "offset": 1
+        },
+        {
+          "type": "RelativePosition",
+          "a": [
+            "food",
+            "gyros"
+          ],
+          "b": [
+            "food",
+            "tacos"
+          ],
+          "operator": "==",
+          "offset": -1
+        }
+      ]
+    },
+    {
+      "type": "RelativePosition",
+      "a": [
+        "food",
+        "waffles"
+      ],
+      "b": [
+        "food",
+        "falafel"
+      ],
+      "operator": "<",
+      "offset": 0,
+      "source_text": "The waffle truck is somewhere to the left of the falafel truck."
+    },
+    {
+      "type": "AbsolutePosition",
+      "category_value": [
+        "color",
+        "orange"
+      ],
+      "operator": "==",
+      "position": 5,
+      "source_text": "The orange truck is parked at the east end of the street."
+    },
+    {
+      "type": "RelativePosition",
+      "a": [
+        "vendor",
+        "Rosa"
+      ],
+      "b": [
+        "color",
+        "cream"
+      ],
+      "operator": "==",
+      "offset": 0,
+      "source_text": "Rosa's truck is cream."
+    },
+    {
+      "type": "RelativePosition",
+      "a": [
+        "food",
+        "waffles"
+      ],
+      "b": [
+        "music",
+        "rock"
+      ],
+      "operator": "==",
+      "offset": 0,
+      "source_text": "The waffle truck plays rock."
+    }
+  ]
+}

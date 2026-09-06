@@ -1,6 +1,7 @@
 {
   "name": "The Einstein Puzzle",
   "question": "Who owns the zebra, and who drinks water?",
+  "position_noun": "house",
   "text": "There are five houses in a row, each painted a different colour. In each house lives a person of a different nationality. The five owners each drink a different drink, smoke a different brand, and keep a different pet.\n\nThe Englishman lives in the red house.\nThe Spaniard owns the dog.\nCoffee is drunk in the green house.\nThe Ukrainian drinks tea.\nThe green house is immediately to the right of the ivory house.\nThe Old Gold smoker owns snails.\nKools are smoked in the yellow house.\nMilk is drunk in the middle house.\nThe Norwegian lives in the first house.\nThe man who smokes Chesterfields lives in the house next to the man with the fox.\nKools are smoked in the house next to the house where the horse is kept.\nThe Lucky Strike smoker drinks orange juice.\nThe Japanese smokes Parliaments.\nThe Norwegian lives next to the blue house.\n\nWho owns the zebra, and who drinks water?",
   "num_positions": 5,
   "categories": {

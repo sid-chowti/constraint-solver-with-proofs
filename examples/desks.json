@@ -1,0 +1,213 @@
+{
+  "name": "The Four Desks",
+  "question": "Who keeps the bird, and what colour is Cara's desk?",
+  "position_noun": "desk",
+  "text": "Four friends — Ana, Ben, Cara and Dev — share a row of four desks, numbered 1 to 4 from the left. Each desk is painted a different colour: red, blue, green or yellow. Each friend drinks something different — tea, coffee, juice or water — and each keeps a different pet: a cat, a dog, a fish or a bird.\n\nAna sits at desk 1.\nBen sits immediately to the left of Cara.\nBen drinks coffee.\nThe friend with the dog drinks coffee.\nCara keeps the fish.\nThe fish owner drinks juice.\nThe tea drinker sits at the red desk.\nThe cat owner drinks tea.\nThe green desk is immediately to the right of the blue desk.\nThe bird is next to the fish.\nThe yellow desk is at one end of the row.",
+  "num_positions": 4,
+  "categories": {
+    "name": [
+      "Ana",
+      "Ben",
+      "Cara",
+      "Dev"
+    ],
+    "drink": [
+      "tea",
+      "coffee",
+      "juice",
+      "water"
+    ],
+    "pet": [
+      "cat",
+      "dog",
+      "fish",
+      "bird"
+    ],
+    "color": [
+      "red",
+      "blue",
+      "green",
+      "yellow"
+    ]
+  },
+  "clues": [
+    {
+      "type": "AbsolutePosition",
+      "category_value": [
+        "name",
+        "Ana"
+      ],
+      "operator": "==",
+      "position": 1,
+      "source_text": "Ana sits at desk 1."
+    },
+    {
+      "type": "RelativePosition",
+      "a": [
+        "name",
+        "Ben"
+      ],
+      "b": [
+        "name",
+        "Cara"
+      ],
+      "operator": "==",
+      "offset": 1,
+      "source_text": "Ben sits immediately to the left of Cara."
+    },
+    {
+      "type": "RelativePosition",
+      "a": [
+        "name",
+        "Ben"
+      ],
+      "b": [
+        "drink",
+        "coffee"
+      ],
+      "operator": "==",
+      "offset": 0,
+      "source_text": "Ben drinks coffee."
+    },
+    {
+      "type": "RelativePosition",
+      "a": [
+        "pet",
+        "dog"
+      ],
+      "b": [
+        "drink",
+        "coffee"
+      ],
+      "operator": "==",
+      "offset": 0,
+      "source_text": "The friend with the dog drinks coffee."
+    },
+    {
+      "type": "RelativePosition",
+      "a": [
+        "name",
+        "Cara"
+      ],
+      "b": [
+        "pet",
+        "fish"
+      ],
+      "operator": "==",
+      "offset": 0,
+      "source_text": "Cara keeps the fish."
+    },
+    {
+      "type": "RelativePosition",
+      "a": [
+        "pet",
+        "fish"
+      ],
+      "b": [
+        "drink",
+        "juice"
+      ],
+      "operator": "==",
+      "offset": 0,
+      "source_text": "The fish owner drinks juice."
+    },
+    {
+      "type": "RelativePosition",
+      "a": [
+        "drink",
+        "tea"
+      ],
+      "b": [
+        "color",
+        "red"
+      ],
+      "operator": "==",
+      "offset": 0,
+      "source_text": "The tea drinker sits at the red desk."
+    },
+    {
+      "type": "RelativePosition",
+      "a": [
+        "pet",
+        "cat"
+      ],
+      "b": [
+        "drink",
+        "tea"
+      ],
+      "operator": "==",
+      "offset": 0,
+      "source_text": "The cat owner drinks tea."
+    },
+    {
+      "type": "RelativePosition",
+      "a": [
+        "color",
+        "blue"
+      ],
+      "b": [
+        "color",
+        "green"
+      ],
+      "operator": "==",
+      "offset": 1,
+      "source_text": "The green desk is immediately to the right of the blue desk."
+    },
+    {
+      "type": "Or",
+      "source_text": "The bird is next to the fish.",
+      "constraints": [
+        {
+          "type": "RelativePosition",
+          "a": [
+            "pet",
+            "bird"
+          ],
+          "b": [
+            "pet",
+            "fish"
+          ],
+          "operator": "==",
+          "offset": 1
+        },
+        {
+          "type": "RelativePosition",
+          "a": [
+            "pet",
+            "bird"
+          ],
+          "b": [
+            "pet",
+            "fish"
+          ],
+          "operator": "==",
+          "offset": -1
+        }
+      ]
+    },
+    {
+      "type": "Or",
+      "source_text": "The yellow desk is at one end of the row.",
+      "constraints": [
+        {
+          "type": "AbsolutePosition",
+          "category_value": [
+            "color",
+            "yellow"
+          ],
+          "operator": "==",
+          "position": 1
+        },
+        {
+          "type": "AbsolutePosition",
+          "category_value": [
+            "color",
+            "yellow"
+          ],
+          "operator": "==",
+          "position": 4
+        }
+      ]
+    }
+  ]
+}
