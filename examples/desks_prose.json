@@ -1,5 +1,5 @@
 {
-  "_note": "Plain-English wording for The Four Desks, written once and stored so the demo needs no API key. Keys are group ids from to_ai_payload; every id must appear exactly once, which narrate.problems_with checks and a test enforces against the live trace.",
+  "_note": "Plain-English wording for The Four Desks, written once and stored so the demo needs no API key. Regenerate with: python -m narrate_example --api-key sk-ant-... --name desks . Keys are group ids from to_ai_payload; every id must appear exactly once, which narrate.problems_with checks and a test enforces against the live trace.",
   "prose": {
     "1": "\"Ana sits at desk 1\" settles her straight away: she is at no other desk, and nobody else can be at desk 1.",
     "2": "With Ben, Cara and Dev all shut out of desk 1, Ana is who remains there.",

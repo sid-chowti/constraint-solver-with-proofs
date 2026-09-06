@@ -234,7 +234,7 @@ never logged.
 .venv/bin/pytest -q
 ```
 
-292 tests. The translator's retry paths and the whole confirm-then-solve flow
+298 tests. The translator's retry paths and the whole confirm-then-solve flow
 are covered with canned replies, so everything runs without an API key.
 
 ## Layout
@@ -250,6 +250,7 @@ solve.py        propagation, shaving, and the public solve() front door
 parsing.py      untrusted data -> real clues, or a clear list of complaints
 grounding.py    did the user actually write this value, or did the AI invent it
 narrate.py      the finished proof -> English, with the ids as the check
+narrate_example.py  maintenance only: rewrite a bundled puzzle's stored wording
 translate.py    English -> clues, with the guards as the judge
 app.py          the web layer
 ```

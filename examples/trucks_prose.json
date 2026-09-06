@@ -1,5 +1,5 @@
 {
-  "_note": "Plain-English wording for The Five Food Trucks, written once and stored so the demo needs no API key. Keys are group ids from to_ai_payload; every id must appear exactly once, which narrate.problems_with checks and a test enforces against the live trace.",
+  "_note": "Plain-English wording for The Five Food Trucks, written once and stored so the demo needs no API key. Regenerate with: python -m narrate_example --api-key sk-ant-... --name trucks . Keys are group ids from to_ai_payload; every id must appear exactly once, which narrate.problems_with checks and a test enforces against the live trace.",
   "prose": {
     "1": "Nina parks immediately to the right of Quinn, so Quinn cannot be at the far east end with nobody beyond him, and Nina cannot be at truck 1 with nobody before her.",
     "2": "The waffle truck sits somewhere to the left of the falafel truck, so the waffles cannot be at truck 5 and the falafel cannot be at truck 1.",

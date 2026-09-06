@@ -1,5 +1,5 @@
 {
-  "_note": "Plain-English wording for the bundled puzzle's 74 deduction steps, written once and stored so the demo needs no API key and costs nothing. Regenerate with: python -m narrate_example --api-key sk-ant-... . The keys are group ids from to_ai_payload; every id must appear exactly once, which narrate.problems_with checks.",
+  "_note": "Plain-English wording for The Einstein Puzzle, written once and stored so the demo needs no API key. Regenerate with: python -m narrate_example --api-key sk-ant-... --name einstein . Keys are group ids from to_ai_payload; every id must appear exactly once, which narrate.problems_with checks and a test enforces against the live trace.",
   "prose": {
     "1": "\"The green house is immediately to the right of the ivory house\" needs a house on each side of the pair, so ivory can't be house 5 with nothing to its right, and green can't be house 1 with nothing to its left.",
     "2": "\"Milk is drunk in the middle house\" pins milk to house 3. That rules milk out of every other house, and rules every other drink out of house 3.",
