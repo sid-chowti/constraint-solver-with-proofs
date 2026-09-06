@@ -279,8 +279,13 @@ function branchName(sub) {
      a clue reference, where `says` is what THIS branch supposes and `text` is
      the whole clue it came from — every branch shares that text, so `says` is
      the only thing that tells two branches apart. */
-  if (typeof sub.assuming === 'string') return sub.assuming;
-  return sub.assuming.says || sub.assuming.text || 'this branch';
+  const said = typeof sub.assuming === 'string'
+    ? sub.assuming
+    : (sub.assuming.says || sub.assuming.text || 'this branch');
+
+  /* A shaving assumption already reads "suppose the nation at house 2 is
+     Japanese"; an Or branch is a bare statement. Say "suppose" exactly once. */
+  return /^suppose\b/i.test(said) ? said : 'suppose ' + said;
 }
 
 /* The board. Values keep their places and get struck through as they die, so
@@ -381,7 +386,7 @@ function renderBranches(step) {
       const ended = sub.ended_in_contradiction
         ? 'turned out impossible' : 'holds, and agrees';
       html += `<button class="ghost" data-branch="${i}">`
-            + `assume ${esc(branchName(sub))} &rarr; ${ended}</button>`;
+            + `${esc(branchName(sub))} &rarr; ${ended}</button>`;
     }
     html += '</div>';
   }
@@ -402,7 +407,7 @@ function drawViewer() {
   html += '</div>';
 
   if (inside) {
-    html += '<p class="crumb">' + chain.map(s => 'assuming ' + esc(branchName(s))).join(' &rsaquo; ') + '</p>';
+    html += '<p class="crumb">' + chain.map(s => esc(branchName(s))).join(' &rsaquo; ') + '</p>';
   }
 
   html += `<div class="panel${inside ? ' pretend' : ''}">`;
