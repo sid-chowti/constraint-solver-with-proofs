@@ -413,3 +413,77 @@ def test_an_example_name_cannot_escape_the_examples_folder():
         response = client.get("/api/example", params={"name": attack})
 
         assert response.status_code == 404, attack
+
+
+# ---------------------------------------------------------------------------
+# Advice a person can act on, not just the model's complaint
+# ---------------------------------------------------------------------------
+
+# The likeliest real mistake: pasting the clues without the sentence that lists
+# the options, which leaves one value genuinely unknowable. The guard is right
+# to refuse; the message just has to say why in words a person can use.
+def test_a_hint_names_what_the_puzzle_never_mentioned():
+    from grounding import complaints, hint_for
+
+    clues_only = ("Cy wears the white hat. "
+                  "The red hat is immediately to the left of the white hat. "
+                  "The green hat is on seat 1.")
+    said = hint_for(complaints({"hat": ["red", "blue", "green", "white"]}, clues_only))
+
+    assert "blue" in said
+    assert "lists the options" in said
+    assert "hat" in said
+
+
+def test_the_hint_reads_right_for_one_value_and_for_several():
+    from grounding import hint_for
+
+    one = hint_for(["the hat value 'blue' does not appear anywhere in the puzzle text"])
+    many = hint_for(["the hat value 'blue' does not appear anywhere in the puzzle text",
+                     "the pet value 'dog' does not appear anywhere in the puzzle text"])
+
+    assert "that was among the choices" in one
+    assert "those were among the choices" in many
+
+
+# Silence is better than a guess: a clue with a bad operator has nothing to do
+# with missing options, and pointing at options would send the reader the wrong
+# way entirely.
+def test_no_hint_when_that_was_not_the_problem():
+    from grounding import hint_for
+
+    assert hint_for(["clue 3: unsupported operator '~~'"]) is None
+    assert hint_for([]) is None
+
+
+def test_the_endpoint_passes_the_hint_on(monkeypatch):
+    import app as app_module
+    from translate import TranslationFailed
+
+    def fails(text, ask, **kwargs):
+        raise TranslationFailed([[
+            "the hat value 'blue' does not appear anywhere in the puzzle text"]])
+
+    monkeypatch.setattr(app_module, "translate", fails)
+    monkeypatch.setattr(app_module, "anthropic_asker", lambda key: None)
+
+    detail = client.post("/api/translate",
+                         json={"text": "some clues", "api_key": "k"}).json()["detail"]
+
+    assert "blue" in detail["hint"]
+    assert detail["attempts"], "the raw complaints stay available too"
+
+
+def test_no_hint_key_when_the_failure_was_something_else(monkeypatch):
+    import app as app_module
+    from translate import TranslationFailed
+
+    monkeypatch.setattr(app_module, "translate",
+                        lambda text, ask, **kw: (_ for _ in ()).throw(
+                            TranslationFailed([["clue 1: unsupported operator"]])))
+    monkeypatch.setattr(app_module, "anthropic_asker", lambda key: None)
+
+    detail = client.post("/api/translate",
+                         json={"text": "x", "api_key": "k"}).json()["detail"]
+
+    assert "hint" not in detail

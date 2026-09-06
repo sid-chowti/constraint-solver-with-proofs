@@ -52,6 +52,7 @@ from pydantic import BaseModel
 from constraints import InvalidConstraint
 from deduction import to_ai_payload
 from examples import available, load, load_prose
+from grounding import hint_for
 from parsing import UnreadableClues, clue_to_json, clues_from_json
 from puzzle import Puzzle
 from solve import solve
@@ -121,11 +122,17 @@ def translate_puzzle(request: TranslateRequest):
         puzzle, clues = translate(request.text, anthropic_asker(request.api_key.strip()))
     except TranslationFailed as failed:
         # The clues could not be read even after retrying. Show what the guards
-        # objected to — far more useful than "translation failed".
-        raise HTTPException(422, {
-            "message": "Could not read that puzzle into clues.",
-            "attempts": failed.attempts,
-        })
+        # objected to — far more useful than "translation failed" — and, where
+        # the reason was invented values, say in plain words what is missing
+        # from the puzzle. That case is almost always someone pasting the clues
+        # without the line that lists the options.
+        last = failed.attempts[-1] if failed.attempts else []
+        detail = {"message": "Could not read that puzzle into clues.",
+                  "attempts": failed.attempts}
+        hint = hint_for(last)
+        if hint:
+            detail["hint"] = hint
+        raise HTTPException(422, detail)
     except Exception as broken:  # noqa: BLE001 - the API call can fail many ways
         raise HTTPException(502, f"The translation service failed: {broken}")
 

@@ -1,7 +1,9 @@
 # Deployment for Render's free tier. One web service, no database, no build step.
 #
-# PYTHON_VERSION is pinned because the code uses `str | None` type syntax,
-# which needs Python 3.10 or newer.
+# PYTHON_VERSION is pinned to the version this is actually developed and
+# tested on. The code needs 3.10 or newer for `str | None` type syntax, but
+# "newer than 3.10" is not the same claim as "tested" - deploying onto a
+# version no test has ever run against is how you find out the hard way.
 services:
   - type: web
     name: logic-puzzle-solver
@@ -11,4 +13,4 @@ services:
     startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
-        value: "3.12.7"
+        value: "3.11.13"

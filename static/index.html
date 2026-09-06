@@ -631,8 +631,11 @@ async function call(url, options, button, working, then, keepOut) {
     if (!res.ok) {
       const d = body.detail;
       let text = typeof d === 'string' ? d : (d && d.message) || 'Something went wrong.';
+      /* A hint is advice a person can act on, so it leads. The raw guard
+         complaints are written for the model and follow behind it. */
+      if (d && d.hint) text += ' ' + d.hint;
       if (d && d.attempts && d.attempts.length) {
-        text += ' The checks said: ' + d.attempts[d.attempts.length - 1].join(' ');
+        text += ' (The checks said: ' + d.attempts[d.attempts.length - 1].join(' ') + ')';
       }
       if (d && d.problems) text += ' ' + d.problems.join(' ');
       say(text, true);

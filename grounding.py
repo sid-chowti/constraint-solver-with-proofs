@@ -87,3 +87,40 @@ def complaints(categories, text):
         f"invent a value"
         for category, value in find_ungrounded(categories, text)
     ]
+
+
+# Pulls the category and value back out of a complaint written above.
+_COMPLAINT = re.compile(r"the (\S+) value '([^']+)' does not appear anywhere")
+
+
+# Advice for a PERSON, when the run was abandoned because values were invented.
+#
+# The complaints above are instructions to a model - "never invent a value" is
+# sensible to a model and baffling to someone who just pasted a puzzle. The real
+# mistake is nearly always the same: they gave the clues but not the sentence
+# that lists the options, so one value is genuinely unknowable. Say that.
+#
+# Returns None when invented values were not the reason, so the caller can stay
+# quiet rather than guess.
+def hint_for(complaints):
+    missing = []
+    for complaint in complaints:
+        found = _COMPLAINT.search(str(complaint))
+        if found:
+            missing.append((found.group(1), found.group(2)))
+    if not missing:
+        return None
+
+    words = ", ".join(f"\u201c{value}\u201d" for _, value in missing[:4])
+    more = "" if len(missing) <= 4 else f" (and {len(missing) - 4} more)"
+    category = missing[0][0]
+
+    one = len(missing) == 1
+    return (
+        f"Your puzzle never mentions {words}{more}, so there was no way to know "
+        f"{'that was' if one else 'those were'} among the choices. A puzzle needs "
+        f"a line that lists the "
+        f"options for each thing being matched up \u2014 for example "
+        f"\u201ceach one has a different {category}: ...\u201d listing them all. "
+        f"Add that and try again."
+    )

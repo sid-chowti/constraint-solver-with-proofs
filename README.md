@@ -254,7 +254,7 @@ never logged.
 .venv/bin/pytest -q
 ```
 
-296 tests. The translator's retry paths and the whole confirm-then-solve flow
+301 tests. The translator's retry paths and the whole confirm-then-solve flow
 are covered with canned replies, so everything runs without an API key.
 
 ## Layout

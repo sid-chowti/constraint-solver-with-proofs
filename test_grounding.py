@@ -54,7 +54,9 @@ def test_a_value_hiding_inside_another_word_does_not_count():
 # so every one of its values must ground. A guard that refuses this puzzle is
 # broken, whatever else it gets right.
 def test_the_bundled_puzzle_is_fully_grounded():
-    data = json.loads(open("examples/einstein.json", encoding="utf-8").read())
+    from examples import EXAMPLES
+
+    data = json.loads((EXAMPLES / "einstein.json").read_text(encoding="utf-8"))
 
     assert find_ungrounded(data["categories"], data["text"]) == []
 
