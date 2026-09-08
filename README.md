@@ -273,4 +273,11 @@ narrate.py      maintenance only: proof -> English, with the ids as the check
 narrate_example.py  maintenance only: rewrite a bundled puzzle's stored wording
 translate.py    English -> clues, with the guards as the judge
 app.py          the web layer
+examples.py     the bundled puzzles, loaded and served without a key
+static/index.html  the whole front end: one page, no framework, no build
 ```
+
+## License
+
+MIT - see [LICENSE](LICENSE).
+

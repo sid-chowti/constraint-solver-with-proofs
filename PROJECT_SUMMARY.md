@@ -2,7 +2,7 @@
 
 **Repo:** github.com/sid-chowti/constraint-solver-with-proofs
 **Deployed:** Render (free tier web service, Infrastructure-as-Code via `render.yaml`) — *(paste your live `*.onrender.com` URL here; it isn't recorded in the repo)*
-**Timeline:** 2026-08-07 → 2026-09-06, 56 commits, solo author
+**Timeline:** 2026-08-07 → 2026-09-08, ~60 commits, sole contributor
 **Stack:** Python 3.11, FastAPI, Uvicorn (ASGI), Pydantic, Anthropic SDK, pytest, vanilla HTML/CSS/JS (no framework, no build step)
 **Size:** ~2,880 lines of production Python + ~3,570 lines of tests + 727 lines of front-end. **301 tests, all passing.**
 
