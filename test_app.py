@@ -10,7 +10,7 @@ def test_the_page_loads():
     response = client.get("/")
 
     assert response.status_code == 200
-    assert "Logic Puzzle Solver" in response.text
+    assert "Constraint Solver with Proofs" in response.text
 
 
 # The no-key path: the whole point of bundling a translated example.

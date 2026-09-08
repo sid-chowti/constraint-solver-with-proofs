@@ -1,4 +1,4 @@
-# Logic Puzzle Solver
+# Constraint Solver with Proofs
 
 Type an Einstein/Zebra-style logic puzzle in plain English. An AI turns the
 sentences into structured clues. A hand-built solver works out the answer and

@@ -58,7 +58,7 @@ from puzzle import Puzzle
 from solve import solve
 from translate import TranslationFailed, anthropic_asker, translate, warnings_for
 
-app = FastAPI(title="Logic Puzzle Solver")
+app = FastAPI(title="Constraint Solver with Proofs")
 
 STATIC = pathlib.Path(__file__).parent / "static"
 
